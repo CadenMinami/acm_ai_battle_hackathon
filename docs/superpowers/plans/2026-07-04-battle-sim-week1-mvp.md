@@ -17,6 +17,8 @@
 - Deadlines (`deadline_seconds`) and the startup grace period (`startup_grace_seconds`) must be parameters, never hardcoded constants — tests need tiny values (e.g. `0.05`, `0.0`) to stay fast and deterministic regardless of host machine speed.
 - Measure deadlines with `time.monotonic()`, never `time.time()`.
 - Every request the orchestrator sends carries a `request_id`; a response is only accepted if its `request_id` matches the outstanding request, so a late/stale response from a prior tick is dropped instead of misapplied.
+- An explicit, on-time `{"action": "none"}` response is a successful poll that resets the consecutive-miss counter — declining to act is a legal play. Only a missing/late/malformed response (or dead process) counts as a miss.
+- Both agents' responses are collected against one shared absolute deadline opened after both requests are sent (`AgentProcess.send_request` then `await_response`), so neither player's deadline window depends on how long the other took.
 - The opponent's `hand`, `deck`, and `cycle_queue` must never appear anywhere in a state payload sent to an agent — only currently-visible troops/buildings and tower HP. This restriction does **not** apply to the spectator log (Task 8) or web viewer (Task 10) — those show both sides in full, on purpose, since they're for humans watching after the fact, not competing agents.
 - Every player-facing agent subprocess (baseline or student-submitted) is spawned with its assigned player ID (`0` or `1`) appended as a single CLI argument — this is the wire convention for orientation, since the JSON payload itself is player-relative and doesn't restate which side is "home."
 - Docker sandboxing (Task 9) requires no changes to `AgentProcess` or `run_match` — both already treat the agent launch command as an opaque `list[str]`; wrapping it in `docker run` is purely a different command list constructed by the caller.
@@ -436,7 +438,7 @@ git commit -m "Add baseline random-legal-move reference agent"
 - Test: `tests/test_agent_process.py`
 
 **Interfaces:**
-- Produces: `AgentProcess(command: list[str])` with `.request(payload: dict, deadline_seconds: float) -> dict | None` and `.close() -> None`, used by `orchestrator/match.py` (Task 6). `.request(...)` returns `None` on timeout, a crashed process, or unparseable output — all three are indistinguishable to the caller by design (see Global Constraints).
+- Produces: `AgentProcess(command: list[str])` with `.send_request(payload: dict) -> bool`, `.await_response(request_id, deadline: float) -> dict | None` (deadline is an absolute `time.monotonic()` value), a `.request(payload: dict, deadline_seconds: float) -> dict | None` convenience wrapper combining the two, and `.close() -> None`. Task 6's orchestrator uses the split send/await pair so both players share one deadline window; the tests here use `.request(...)`. A `None` return means timeout, a crashed process, or unparseable output — all three are indistinguishable to the caller by design (see Global Constraints).
 
 - [ ] **Step 1: Write the controllable fixture agent**
 
@@ -574,32 +576,43 @@ class AgentProcess:
                 continue
             self._responses.put(message)
 
-    def request(self, payload: Dict[str, Any], deadline_seconds: float) -> Optional[Dict[str, Any]]:
-        """Send one request and wait up to deadline_seconds for the
-        matching response. Returns None on timeout, a dead process, or
-        malformed output — all three are treated identically by the
-        caller (a missed poll), so this method doesn't distinguish them."""
+    def send_request(self, payload: Dict[str, Any]) -> bool:
+        """Write one request without waiting. Split from await_response
+        so the orchestrator can open both players' deadline windows at
+        the same moment: send to both agents first, then collect both."""
         if self._proc.poll() is not None or self._proc.stdin is None:
-            return None
-
+            return False
         try:
             self._proc.stdin.write(json.dumps(payload) + "\n")
             self._proc.stdin.flush()
+            return True
         except (BrokenPipeError, OSError):
-            return None
+            return False
 
-        deadline = time.monotonic() + deadline_seconds
+    def await_response(self, request_id: Any, deadline: float) -> Optional[Dict[str, Any]]:
+        """Wait until `deadline` (an absolute time.monotonic() value) for
+        the response matching request_id. Returns None on timeout, a dead
+        process, or malformed output — all three are treated identically
+        by the caller (a missed poll), so this method doesn't distinguish
+        them. Uses max(0, remaining) rather than returning early on
+        remaining <= 0, so a response that arrived in time but hasn't been
+        drained from the queue yet is still accepted."""
         while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return None
+            remaining = max(0.0, deadline - time.monotonic())
             try:
                 message = self._responses.get(timeout=remaining)
             except queue.Empty:
                 return None
-            if message.get("request_id") == payload.get("request_id"):
+            if message.get("request_id") == request_id:
                 return message
             # Stale response from a prior tick — discard and keep waiting.
+
+    def request(self, payload: Dict[str, Any], deadline_seconds: float) -> Optional[Dict[str, Any]]:
+        """Convenience wrapper: send one request and wait up to
+        deadline_seconds for its response."""
+        if not self.send_request(payload):
+            return None
+        return self.await_response(payload.get("request_id"), time.monotonic() + deadline_seconds)
 
     def close(self) -> None:
         if self._proc.poll() is None:
@@ -736,20 +749,35 @@ def run_match(
                 request_id += 1
                 grace_active = (time.monotonic() - start_time) < startup_grace_seconds
                 payloads = [project_state(battle, player_id, request_id) for player_id in (0, 1)]
+
+                # Send both requests before collecting either response, so
+                # both agents' deadline windows open at the same moment and
+                # neither decision can be influenced by the other's.
+                sent = [
+                    agents[player_id].send_request(payloads[player_id])
+                    for player_id in (0, 1)
+                ]
+                deadline = time.monotonic() + deadline_seconds
                 responses = [
-                    agents[player_id].request(payloads[player_id], deadline_seconds)
+                    agents[player_id].await_response(request_id, deadline) if sent[player_id] else None
                     for player_id in (0, 1)
                 ]
 
                 for player_id, response in enumerate(responses):
-                    if response is None or response.get("action") != "deploy":
+                    if response is None:
                         if not grace_active:
                             miss_counts[player_id] += 1
                             if miss_counts[player_id] >= MAX_CONSECUTIVE_MISSES:
                                 forfeited_by = player_id
                         continue
 
+                    # Any well-formed, on-time response — a deploy OR an
+                    # explicit "none" — is a successful poll and resets the
+                    # consecutive-miss count. Declining to act is a legal
+                    # play, not a miss.
                     miss_counts[player_id] = 0
+                    if response.get("action") != "deploy":
+                        continue
                     card = response.get("card")
                     x = response.get("x")
                     y = response.get("y")
