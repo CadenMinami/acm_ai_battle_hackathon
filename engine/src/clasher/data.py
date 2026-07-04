@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional, List
 import json
+from pathlib import Path
 
 from .card_types import CardDefinition, CardStatsCompat
 from .card_aliases import alias_card_map, resolve_card_name
@@ -8,7 +9,10 @@ from .factory.card_factory import card_from_gamedata
 
 class CardDataLoader:
     def __init__(self, data_file: str = "gamedata.json"):
-        self.data_file = data_file
+        path = Path(data_file)
+        if data_file == "gamedata.json" and not path.exists():
+            path = Path(__file__).resolve().parents[2] / data_file
+        self.data_file = str(path)
         self._cards: Dict[str, CardStatsCompat] = {}
         self._card_definitions: Dict[str, CardDefinition] = {}
 

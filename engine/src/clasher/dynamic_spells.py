@@ -4,6 +4,7 @@ Dynamic spell type assignment based on JSON data structure
 """
 
 import json
+from pathlib import Path
 from typing import Dict, Any, Type
 from .spells import (
     Spell, DirectDamageSpell, ProjectileSpell, SpawnProjectileSpell, 
@@ -332,7 +333,12 @@ def create_spell_from_json(spell_data: Dict[str, Any]) -> Spell:
 
 def load_dynamic_spells() -> Dict[str, Spell]:
     """Load all spells dynamically from gamedata.json."""
-    with open('gamedata.json', 'r') as f:
+    data_file = 'gamedata.json'
+    path = Path(data_file)
+    if not path.exists():
+        path = Path(__file__).resolve().parents[2] / data_file
+
+    with open(path, 'r') as f:
         data = json.load(f)
     
     # Get actual spells

@@ -4,6 +4,7 @@ import json
 
 from .battle import BattleState
 from .arena import Position
+from .data import CardDataLoader
 
 
 class BattleEngine:
@@ -15,9 +16,7 @@ class BattleEngine:
         
     def create_battle(self) -> BattleState:
         """Create a new battle instance"""
-        self.battle = BattleState()
-        self.battle.card_loader.data_file = self.data_file
-        self.battle.card_loader.load_cards()
+        self.battle = BattleState(card_loader=CardDataLoader(self.data_file))
         return self.battle
     
     def run_battle(self, 
