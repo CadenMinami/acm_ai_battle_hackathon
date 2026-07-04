@@ -13,11 +13,14 @@ run automatically and feed a live leaderboard. A match can be watched three
 ways: manual (human) play, live agent-vs-agent, or recorded replay with
 adjustable playback speed.
 
-**Timeline:** the live event is ~2 months out (early September 2026). A
-working local prototype — engine + one baseline agent + orchestrator running
-a full match, no UI required — is due within one week of this doc
-(by 2026-07-11). That prototype is the subject of this design; the rest of
-the roadmap (section 6) is sequenced for the remaining ~7 weeks.
+**Timeline:** the live event is ~2 months out (early September 2026), but
+Caden's personal build window is one week (by 2026-07-11), after which the
+project hands off to other team members for the remaining ~7 weeks of
+hardening before the event. Because of that, **every one of the 5 phases
+gets a working, thin, unpolished slice this week** — not just Phase 1 in
+depth followed by Phases 2-5 later. Section 12 lays out exactly what's thin
+now vs. explicitly deferred to whoever inherits this, phase by phase, so the
+handoff is honest about what's rough rather than silently incomplete.
 
 **IP note:** the base engine is a fan-built simulation of a commercial mobile
 game using scraped card data. Avoid Supercell branding/art and don't lean on
@@ -192,36 +195,129 @@ baseline, not for a competitive submission.
   - A full match between two baseline agents reaches a winner or draw
     within a bounded tick count.
 
-## 8. Explicitly out of scope for week 1
+## 8. Phase 2 thin slice — Docker sandboxing + match logging
 
-Deferred to later phases (see roadmap below), not built now: Docker
-sandboxing of agent subprocesses, tick-by-tick replay logging, the web
-UI, tournament/bracket/leaderboard tooling, cloud deployment, the
-Gymnasium RL wrapper, and a heuristic (non-random) reference agent.
+**Docker requires no changes to `AgentProcess` or `match.py`.** Both were
+already designed around an opaque `command: list[str]` passed to
+`subprocess.Popen` — swapping a raw `["python3", "agent.py", "0"]` for
+`["docker", "run", "-i", "--rm", "battle-agent-base", "python3",
+"/app/agents/baseline_random/agent.py", "0"]` is purely a change to what
+command gets constructed by the caller (the CLI, or the bracket runner in
+section 10). One shared base image (`python:3.11-slim`, the whole
+`agents/` directory copied in) is enough for week 1, since every agent
+running this week is our own script, not real student submissions —
+per-submission custom images are a real Phase 2 concern for the handoff
+team, not something week 1 needs to solve.
 
-## 9. Roadmap beyond week 1
+**Match logging** is a JSONL file of periodic full-state snapshots
+(tick, every troop/building's card/position/HP for *both* sides, both
+players' elixir and tower HP, `game_over`, `winner`) written once per
+tick during `run_match`. Unlike the agent protocol, a spectator log has
+no fog-of-war constraint — it's written after the fact for a human to
+watch, not sent to a competing agent. `run_match` gains an optional
+`log_path: Path | None` parameter; when set, it appends one JSON line
+per tick. This is the same log format Phase 3's viewer and Phase 4's
+bracket runner both consume, so it only needs to be built once.
 
-| Phase | Focus | Deliverables |
+## 9. Phase 3 thin slice — shared live/replay web viewer
+
+**Deliberate stack deviation from the original doc:** the original doc
+named React + Canvas/SVG and a live-push architecture. For a one-week
+solo build, this plan uses plain HTML/JS + `<canvas>` (no build step,
+no npm dependency to manage under time pressure) and **HTTP polling
+instead of a WebSocket push** — the orchestrator already writes a JSONL
+log every tick (section 8), so a page can just poll
+`GET /snapshot/latest?log=<path>` every ~250ms and read the last line of
+the file, instead of bridging `run_match`'s synchronous loop into an
+async WebSocket broadcaster. The ~250ms latency is imperceptible to a
+spectator; the async-bridging code it avoids is real complexity that
+doesn't pay for itself this week. This is a named, flagged tradeoff, not
+an oversight — migrating to React and a real push channel is reasonable
+work for the handoff team once the core pipeline is proven.
+
+**One renderer serves two modes**, since both need to draw the same
+troop/tower data — only the data source differs:
+- **Live**: poll `/snapshot/latest?log=<path>` every ~250ms while a
+  match is running (or has just finished) and draw the latest snapshot.
+- **Replay**: fetch `/replay?log=<path>` once (returns the whole file as
+  a JSON array — match logs are a few MB at most), then step through it
+  locally on a `setInterval` whose delay implements the speed slider
+  (e.g. 200ms/tick = 1x, 25ms/tick = 8x), with play/pause and a scrub
+  slider bound to the array index.
+
+A small FastAPI app (`web/server.py`) serves the static page and the two
+endpoints above. Rendering itself: an 18×32 grid scaled to the canvas,
+troops as colored circles (blue vs. red) labeled with card name, towers
+as HP bars at their fixed arena positions.
+
+**Explicitly deferred to the handoff team:** manual play (drag-to-deploy
+controls), the full React rewrite, WebSocket push, and the "should feel
+like watching an actual match" visual polish bar from the original doc —
+this week's viewer is legible, not polished.
+
+## 10. Phase 4 thin slice — tournament bracket + leaderboard
+
+`tournament/bracket.py` takes a list of `{"name": str, "command":
+list[str]}` agent entries, builds a single-elimination bracket, and runs
+each match via the *same* `run_match` from Phase 1 — no new
+match-running code, just a loop that calls it once per bracket slot with
+a distinct `log_path` per match (e.g. `logs/round1_match1.jsonl`).
+Results accumulate in `tournament/results.json`:
+```json
+{"rounds": [[{"a": "agent1", "b": "agent2", "winner": "agent1", "log": "logs/round1_match1.jsonl"}]]}
+```
+A static `web/static/bracket.html` fetches that file and renders a flat
+table (round, matchup, winner, a link to replay that match's log through
+the Phase 3 viewer) — a real bracket-tree visualization is deferred.
+
+**Explicitly deferred to the handoff team:** best-of-3 series (this
+week's bracket is best-of-1 per matchup — tripling match count and
+tracking series state isn't worth the time this week), the qualifying
+run against a benchmark agent, and running at the full 32-agent scale.
+
+## 11. Phase 5 thin slice — dry run
+
+Run `tournament/bracket.py` against 4-8 copies of the baseline agent (or
+simple hand-written variants, so matches aren't literally identical) —
+not the full 32 — to prove logging, the bracket runner, and both web
+pages hold together as one pipeline. This phase is verification and
+bugfixing against the other four phases, not new code of its own.
+
+## 12. What's thin now vs. deferred to the handoff team
+
+| Phase | Built this week (thin) | Explicitly deferred |
 |---|---|---|
-| 1 (this doc) | Engine audit & agent interface | Correctness pass on the engine; documented `decide()` protocol; baseline agent |
-| 2 | Orchestrator & sandboxing | Docker isolation added around the existing subprocess protocol (no protocol rework); tick-by-tick JSONL logger |
-| 3 | Web UI — live view | Board renderer (React + Canvas/SVG); manual play mode |
-| 4 | Replay & tournament tooling | Speed-adjustable replay viewer; bracket/leaderboard; match scheduling |
-| 5 | Polish & dry run | Full dry-run tournament with placeholder agents before the live event |
+| 1 — Engine & protocol | Full: audited engine, fog-of-war protocol, timeout/forfeit handling, real end-to-end test | Tuning the 100ms deadline against real student agents |
+| 2 — Sandboxing & logging | One shared Docker base image; per-tick JSONL spectator log | Per-submission custom images; log compaction/rotation for long tournaments |
+| 3 — Web UI | Plain HTML/JS/canvas viewer, HTTP polling, live + replay from one renderer | Manual play (drag-to-deploy); React migration; WebSocket push; visual polish |
+| 4 — Tournament tooling | Single-elimination bracket runner reusing `run_match`; flat-table leaderboard page | Best-of-3 series; benchmark-agent qualifying/seeding run; 32-agent scale |
+| 5 — Dry run | End-to-end pipeline check with 4-8 placeholder agents | Full 32-agent (~300 game) dry run before the live event |
 
-Rough match volume at 32 agents: ~200–250 seeding games (each agent vs. a
-benchmark) plus ~90 bracket games (best-of-3 across a 31-series bracket)
-≈ 300 total games for a full event run-through. At that scale, raw
-compute is not the bottleneck — the value of the cloud stretch goal
-(Fargate/ECS, S3 for logs, DynamoDB for leaderboard) is isolation and
-portfolio story, not throughput necessity.
+## 13. Roadmap after handoff
 
-## 10. Open items carried forward (not blocking week 1)
+Because every phase already has a thin, working slice, the ~7 weeks
+before the event are about hardening each row of the table above to its
+originally-scoped depth — not starting any of them from zero. Rough
+match volume at the full 32-agent scale: ~200–250 seeding games (each
+agent vs. a benchmark) plus ~90 bracket games (best-of-3 across a
+31-series bracket) ≈ 300 total games for a full event run-through. At
+that scale, raw compute is not the bottleneck — the value of the cloud
+stretch goal (Fargate/ECS, S3 for logs, DynamoDB for leaderboard) is
+isolation and portfolio story, not throughput necessity.
+
+## 14. Open items carried forward (not blocking week 1)
 
 - Exact wall-clock deadline (100ms target) to be tuned once real
   student agents are being tested, per the original team doc.
 - Whether the qualifying/seeding run against a benchmark agent needs its
-  own scheduling tooling before Phase 4, or can reuse the week-1
-  orchestrator as-is (likely yes, since the protocol doesn't change).
+  own scheduling tooling, or can reuse this week's bracket runner as-is
+  (likely yes, since the protocol doesn't change).
 - GitHub account/org to fork the engine into (personal account assumed
   above; revisit if this becomes an ACM-org-owned project).
+- **Participant-facing documentation** (flagged by Caden, explicitly not
+  a week-1 requirement): a guide for students on how to write, locally
+  test, and submit an agent against the baseline before the event. This
+  is a different audience from this spec (participants, not the handoff
+  engineering team) and a different document — likely written once the
+  Docker submission format (section 8) is locked down enough that it
+  won't change under participants mid-way through.
