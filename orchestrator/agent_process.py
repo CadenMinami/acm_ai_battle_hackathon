@@ -1,4 +1,5 @@
 import json
+import os
 import queue
 import subprocess
 import threading
@@ -20,6 +21,9 @@ class AgentProcess:
             text=True,
             bufsize=1,
         )
+        if self._proc.stdin is not None:
+            os.set_blocking(self._proc.stdin.fileno(), False)
+        self._pending = b""
         self._responses: "queue.Queue[Dict[str, Any]]" = queue.Queue()
         self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self._reader_thread.start()
@@ -36,16 +40,36 @@ class AgentProcess:
                 continue
             self._responses.put(message)
 
+    def _flush_pending(self) -> bool:
+        assert self._proc.stdin is not None
+        fd = self._proc.stdin.fileno()
+        while self._pending:
+            try:
+                written = os.write(fd, self._pending)
+            except BlockingIOError:
+                return False
+            except (BrokenPipeError, OSError):
+                return False
+            if written <= 0:
+                return False
+            self._pending = self._pending[written:]
+        return True
+
     def send_request(self, payload: Dict[str, Any]) -> bool:
         """Write one request without waiting. Split from await_response
         so the orchestrator can open both players' deadline windows at
         the same moment: send to both agents first, then collect both."""
         if self._proc.poll() is not None or self._proc.stdin is None:
             return False
+        if not self._flush_pending() or self._pending:
+            return False
+        message = (json.dumps(payload) + "\n").encode()
         try:
-            self._proc.stdin.write(json.dumps(payload) + "\n")
-            self._proc.stdin.flush()
+            written = os.write(self._proc.stdin.fileno(), message)
+            self._pending = message[written:]
             return True
+        except BlockingIOError:
+            return False
         except (BrokenPipeError, OSError):
             return False
 

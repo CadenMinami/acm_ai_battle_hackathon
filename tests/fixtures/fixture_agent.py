@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Controllable test double for AgentProcess tests. Mode is picked via
 argv[1]: 'echo' (well-behaved), 'sleep' (misses every deadline),
-'garbage' (sends invalid JSON), 'crash' (exits immediately)."""
+'garbage' (sends invalid JSON), 'stale' (sends a stale response before
+the correct one), 'crash' (exits immediately)."""
 import json
 import sys
 import time
@@ -24,6 +25,9 @@ def main() -> None:
         elif mode == "garbage":
             print("not json", flush=True)
             continue
+        elif mode == "stale":
+            stale_response = {"request_id": request["request_id"] - 1, "action": "none"}
+            print(json.dumps(stale_response), flush=True)
 
         response = {"request_id": request["request_id"], "action": "none"}
         print(json.dumps(response), flush=True)

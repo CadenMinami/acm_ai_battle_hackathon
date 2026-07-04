@@ -35,6 +35,15 @@ def test_garbage_output_is_treated_as_miss():
         agent.close()
 
 
+def test_stale_response_is_discarded_until_correct_id_arrives():
+    agent = AgentProcess(FIXTURE + ["stale"])
+    try:
+        response = agent.request({"request_id": 1}, deadline_seconds=1.0)
+        assert response == {"request_id": 1, "action": "none"}
+    finally:
+        agent.close()
+
+
 def test_crashed_process_is_treated_as_miss():
     agent = AgentProcess(FIXTURE + ["crash"])
     try:
