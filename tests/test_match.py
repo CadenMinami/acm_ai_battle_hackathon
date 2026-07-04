@@ -22,6 +22,19 @@ def test_forfeit_after_five_consecutive_misses():
     assert result["winner"] == 0
 
 
+def test_bad_deploy_coordinates_are_noop_not_forfeit():
+    result = run_match(
+        agent_a_command=FIXTURE + ["echo"],
+        agent_b_command=FIXTURE + ["baddeploy"],
+        seed=1,
+        deadline_seconds=1.0,
+        max_ticks=200,
+        startup_grace_seconds=0.0,
+    )
+    assert isinstance(result, dict)
+    assert result["forfeited_by"] is None
+
+
 def test_full_match_between_baseline_agents_reaches_conclusion():
     result = run_match(
         agent_a_command=BASELINE,

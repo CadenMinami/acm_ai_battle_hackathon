@@ -33,16 +33,16 @@ def run_match(
     engine = BattleEngine(data_file=str(GAMEDATA_PATH))
     battle = engine.create_battle()
 
-    agents = [
-        AgentProcess(agent_a_command + [str(0)]),
-        AgentProcess(agent_b_command + [str(1)]),
-    ]
+    agents: List[AgentProcess] = []
     miss_counts = [0, 0]
     forfeited_by: Optional[int] = None
     request_id = 0
-    start_time = time.monotonic()
 
     try:
+        agents.append(AgentProcess(agent_a_command + [str(0)]))
+        agents.append(AgentProcess(agent_b_command + [str(1)]))
+        start_time = time.monotonic()
+
         for _tick in range(1, max_ticks + 1):
             battle.step()
 
@@ -83,7 +83,10 @@ def run_match(
                     x = response.get("x")
                     y = response.get("y")
                     if card is not None and x is not None and y is not None:
-                        battle.deploy_card(player_id, card, Position(float(x), float(y)))
+                        try:
+                            battle.deploy_card(player_id, card, Position(float(x), float(y)))
+                        except (TypeError, ValueError):
+                            pass
 
                 if forfeited_by is not None:
                     break
