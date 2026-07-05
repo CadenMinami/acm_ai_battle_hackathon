@@ -1,9 +1,8 @@
 from typing import Any, Dict
 
 from clasher.battle import BattleState
-from clasher.entities import Building, Troop
 
-_TOWER_CARD_NAMES = {"Tower", "KingTower"}
+from orchestrator.entity_view import TOWER_CARD_NAMES, iter_live_entities
 
 
 def project_state(battle: BattleState, player_id: int, request_id: int) -> Dict[str, Any]:
@@ -18,11 +17,8 @@ def project_state(battle: BattleState, player_id: int, request_id: int) -> Dict[
 
     own_troops = []
     enemy_troops = []
-    for entity in battle.entities.values():
-        if not entity.is_alive or not isinstance(entity, (Troop, Building)):
-            continue
-        card_name = getattr(entity.card_stats, "name", "Unknown")
-        if card_name in _TOWER_CARD_NAMES:
+    for entity, card_name in iter_live_entities(battle):
+        if card_name in TOWER_CARD_NAMES:
             continue
         troop_info = {
             "card": card_name,

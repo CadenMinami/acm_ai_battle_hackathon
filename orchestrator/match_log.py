@@ -3,9 +3,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 from clasher.battle import BattleState
-from clasher.entities import Building, Troop
 
-_TOWER_CARD_NAMES = {"Tower", "KingTower"}
+from orchestrator.entity_view import TOWER_CARD_NAMES, iter_live_entities
 
 
 def build_snapshot(battle: BattleState) -> Dict[str, Any]:
@@ -14,17 +13,14 @@ def build_snapshot(battle: BattleState) -> Dict[str, Any]:
     log for a human to watch after the fact, not sent to a competing
     agent, so both sides are shown in full."""
     entities = []
-    for entity in battle.entities.values():
-        if not entity.is_alive or not isinstance(entity, (Troop, Building)):
-            continue
-        card_name = getattr(entity.card_stats, "name", "Unknown")
+    for entity, card_name in iter_live_entities(battle):
         entities.append({
             "card": card_name,
             "x": entity.position.x,
             "y": entity.position.y,
             "hp": entity.hitpoints,
             "player_id": entity.player_id,
-            "is_tower": card_name in _TOWER_CARD_NAMES,
+            "is_tower": card_name in TOWER_CARD_NAMES,
         })
 
     return {
