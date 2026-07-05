@@ -23,6 +23,7 @@ def test_build_snapshot_includes_both_sides_in_full():
     assert "Knight" in cards
     assert "Giant" in cards
     assert len(snapshot["players"]) == 2
+    assert all(e["max_hp"] > 0 for e in snapshot["entities"])
 
 
 def test_append_snapshot_writes_one_json_line_per_call(tmp_path):

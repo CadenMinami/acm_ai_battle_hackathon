@@ -19,6 +19,7 @@ def build_snapshot(battle: BattleState) -> Dict[str, Any]:
             "x": entity.position.x,
             "y": entity.position.y,
             "hp": entity.hitpoints,
+            "max_hp": entity.max_hitpoints,
             "player_id": entity.player_id,
             "is_tower": card_name in TOWER_CARD_NAMES,
         })
