@@ -6,9 +6,19 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+ALLOWED_ROOTS = [Path("logs").resolve(), Path("tournament").resolve()]
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def _is_allowed(candidate: Path) -> bool:
+    candidate = candidate.resolve()
+    for root in ALLOWED_ROOTS:
+        allowed_root = Path(root).resolve()
+        if candidate == allowed_root or candidate.is_relative_to(allowed_root):
+            return True
+    return False
 
 
 @app.get("/")
@@ -23,29 +33,44 @@ def bracket_page() -> FileResponse:
 
 @app.get("/snapshot/latest")
 def snapshot_latest(log: str) -> JSONResponse:
-    log_path = Path(log)
+    log_path = Path(log).resolve()
+    if not _is_allowed(log_path):
+        return JSONResponse({"error": "path not allowed"}, status_code=403)
     if not log_path.exists():
         return JSONResponse({"error": "log not found"}, status_code=404)
     with open(log_path, "rb") as f:
         lines = f.read().splitlines()
     if not lines:
         return JSONResponse({"error": "log is empty"}, status_code=404)
-    return JSONResponse(json.loads(lines[-1]))
+    try:
+        return JSONResponse(json.loads(lines[-1]))
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "malformed json"}, status_code=400)
 
 
 @app.get("/replay")
 def replay(log: str) -> JSONResponse:
-    log_path = Path(log)
+    log_path = Path(log).resolve()
+    if not _is_allowed(log_path):
+        return JSONResponse({"error": "path not allowed"}, status_code=403)
     if not log_path.exists():
         return JSONResponse({"error": "log not found"}, status_code=404)
-    with open(log_path) as f:
-        snapshots = [json.loads(line) for line in f if line.strip()]
+    try:
+        with open(log_path) as f:
+            snapshots = [json.loads(line) for line in f if line.strip()]
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "malformed json"}, status_code=400)
     return JSONResponse(snapshots)
 
 
 @app.get("/results")
 def results(path: str) -> JSONResponse:
-    results_path = Path(path)
+    results_path = Path(path).resolve()
+    if not _is_allowed(results_path):
+        return JSONResponse({"error": "path not allowed"}, status_code=403)
     if not results_path.exists():
         return JSONResponse({"error": "results not found"}, status_code=404)
-    return JSONResponse(json.loads(results_path.read_text()))
+    try:
+        return JSONResponse(json.loads(results_path.read_text()))
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "malformed json"}, status_code=400)

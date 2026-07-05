@@ -48,3 +48,31 @@ def test_full_match_between_baseline_agents_reaches_conclusion(tmp_path):
     assert result["winner"] in (0, 1, None)
     assert log_path.exists()
     assert len(log_path.read_text().strip().split("\n")) == result["ticks"]
+
+
+def test_run_match_reuses_log_path_without_leftover_snapshots(tmp_path):
+    log_path = tmp_path / "match.jsonl"
+    first_result = run_match(
+        agent_a_command=BASELINE,
+        agent_b_command=BASELINE,
+        seed=42,
+        deadline_seconds=0.05,
+        max_ticks=40,
+        startup_grace_seconds=0.0,
+        log_path=log_path,
+    )
+    first_lines = log_path.read_text().strip().split("\n")
+
+    second_result = run_match(
+        agent_a_command=BASELINE,
+        agent_b_command=BASELINE,
+        seed=43,
+        deadline_seconds=0.05,
+        max_ticks=40,
+        startup_grace_seconds=0.0,
+        log_path=log_path,
+    )
+    second_lines = log_path.read_text().strip().split("\n")
+
+    assert len(first_lines) == first_result["ticks"]
+    assert len(second_lines) == second_result["ticks"]

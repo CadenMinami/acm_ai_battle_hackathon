@@ -6,14 +6,18 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from web.server import app
+import web.server as web_server
 
 
-client = TestClient(app)
+client = TestClient(web_server.app)
 
 
 def write_jsonl(path, snapshots):
     path.write_text("\n".join(json.dumps(snapshot) for snapshot in snapshots) + "\n")
+
+
+def allow_tmp_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(web_server, "ALLOWED_ROOTS", [tmp_path.resolve()])
 
 
 def test_index_returns_viewer_markup():
@@ -25,7 +29,8 @@ def test_index_returns_viewer_markup():
     assert "/static/viewer.js" in response.text
 
 
-def test_replay_returns_snapshots_in_order(tmp_path):
+def test_replay_returns_snapshots_in_order(tmp_path, monkeypatch):
+    allow_tmp_path(monkeypatch, tmp_path)
     log_path = tmp_path / "match.jsonl"
     snapshots = [
         {"tick": 1, "entities": []},
@@ -40,7 +45,8 @@ def test_replay_returns_snapshots_in_order(tmp_path):
     assert response.json() == snapshots
 
 
-def test_snapshot_latest_returns_last_snapshot(tmp_path):
+def test_snapshot_latest_returns_last_snapshot(tmp_path, monkeypatch):
+    allow_tmp_path(monkeypatch, tmp_path)
     log_path = tmp_path / "match.jsonl"
     snapshots = [
         {"tick": 1, "winner": None},
@@ -55,7 +61,8 @@ def test_snapshot_latest_returns_last_snapshot(tmp_path):
     assert response.json() == snapshots[-1]
 
 
-def test_snapshot_latest_empty_file_returns_404(tmp_path):
+def test_snapshot_latest_empty_file_returns_404(tmp_path, monkeypatch):
+    allow_tmp_path(monkeypatch, tmp_path)
     log_path = tmp_path / "empty.jsonl"
     log_path.write_text("")
 
@@ -65,7 +72,8 @@ def test_snapshot_latest_empty_file_returns_404(tmp_path):
     assert response.json() == {"error": "log is empty"}
 
 
-def test_missing_paths_return_404(tmp_path):
+def test_missing_paths_return_404(tmp_path, monkeypatch):
+    allow_tmp_path(monkeypatch, tmp_path)
     missing_log = tmp_path / "missing.jsonl"
     missing_results = tmp_path / "missing_results.json"
 
@@ -81,7 +89,8 @@ def test_missing_paths_return_404(tmp_path):
     assert results_response.json() == {"error": "results not found"}
 
 
-def test_results_returns_parsed_json(tmp_path):
+def test_results_returns_parsed_json(tmp_path, monkeypatch):
+    allow_tmp_path(monkeypatch, tmp_path)
     results_path = tmp_path / "results.json"
     results = {
         "winner": "agent-a",
@@ -94,3 +103,24 @@ def test_results_returns_parsed_json(tmp_path):
 
     assert response.status_code == 200
     assert response.json() == results
+
+
+def test_disallowed_path_returns_403_before_existence_check(tmp_path, monkeypatch):
+    monkeypatch.setattr(web_server, "ALLOWED_ROOTS", [(tmp_path / "allowed").resolve()])
+    outside_path = tmp_path / "outside.jsonl"
+
+    response = client.get("/replay", params={"log": str(outside_path)})
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "path not allowed"}
+
+
+def test_results_malformed_json_returns_400(tmp_path, monkeypatch):
+    allow_tmp_path(monkeypatch, tmp_path)
+    results_path = tmp_path / "results.json"
+    results_path.write_text("not json")
+
+    response = client.get("/results", params={"path": str(results_path)})
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "malformed json"}
