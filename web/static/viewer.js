@@ -6,6 +6,13 @@ const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const TILE = 20; // pixels per arena tile (18 wide x 32 tall -> 360x640)
 
+function drawMessage(lines) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#fff";
+  ctx.font = "13px monospace";
+  lines.forEach((line, i) => ctx.fillText(line, 16, 30 + i * 18));
+}
+
 function draw(snapshot) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!snapshot) return;
@@ -34,15 +41,31 @@ function draw(snapshot) {
   });
 }
 
-if (mode === "live") {
+if (!logPath) {
+  drawMessage([
+    "No match log specified.",
+    "Add ?log=<path>&mode=replay to the URL, e.g.:",
+    "?log=logs/example_match.jsonl&mode=replay",
+  ]);
+} else if (mode === "live") {
   setInterval(async () => {
     const res = await fetch(`/snapshot/latest?log=${encodeURIComponent(logPath)}`);
-    if (res.ok) draw(await res.json());
+    if (res.ok) {
+      draw(await res.json());
+    } else {
+      drawMessage([`Could not load log: ${logPath}`, `(status ${res.status})`]);
+    }
   }, 250);
 } else {
   fetch(`/replay?log=${encodeURIComponent(logPath)}`)
-    .then((res) => res.json())
+    .then((res) => {
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      return res.json();
+    })
     .then((snapshots) => {
+      if (!Array.isArray(snapshots) || snapshots.length === 0) {
+        throw new Error("empty or invalid replay data");
+      }
       const scrub = document.getElementById("scrub");
       const playPause = document.getElementById("playPause");
       const speed = document.getElementById("speed");
@@ -85,5 +108,8 @@ if (mode === "live") {
       });
 
       render();
+    })
+    .catch((err) => {
+      drawMessage([`Could not load log: ${logPath}`, err.message]);
     });
 }

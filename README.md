@@ -58,7 +58,7 @@ Start the FastAPI app:
 uvicorn web.server:app --reload
 ```
 
-Open `http://localhost:8000/` for the replay viewer, or `http://localhost:8000/bracket?results=tournament/results.json` for the bracket page. Replay links load JSONL files from the allowed `logs/` directory, and bracket results load from `tournament/`.
+The replay viewer needs a `log` and `mode` query param — it doesn't work at the bare `/` URL. Open `http://localhost:8000/?log=logs/example_match.jsonl&mode=replay` to replay the match from the CLI example above (use `mode=live` while a match with `--log-path` is still running). For the bracket page, open `http://localhost:8000/bracket?results=tournament/results.json`. Replay links load JSONL files from the allowed `logs/` directory, and bracket results load from `tournament/`.
 
 ## Docker Sandboxing Note
 
