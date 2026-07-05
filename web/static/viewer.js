@@ -40,10 +40,56 @@ function drawArenaBackground() {
   });
 }
 
+const ELIXIR_MAX = 10;
+const elixirSegments = [document.getElementById("elixir-0"), document.getElementById("elixir-1")].map(
+  (container) => {
+    const segments = [];
+    for (let i = 0; i < ELIXIR_MAX; i++) {
+      const seg = document.createElement("div");
+      seg.className = "w-4 h-5 rounded-sm border border-arena-line bg-arena";
+      container.appendChild(seg);
+      segments.push(seg);
+    }
+    return segments;
+  }
+);
+
+function updateElixirBars(players) {
+  players.forEach((player, i) => {
+    const filled = Math.floor(player.elixir + 1e-6);
+    elixirSegments[i].forEach((seg, idx) => {
+      seg.classList.toggle("bg-elixir", idx < filled);
+      seg.classList.toggle("bg-arena", idx >= filled);
+    });
+  });
+}
+
+function drawHpBar(x, y, radius, hp, maxHp) {
+  if (!maxHp) return; // older logs recorded before max_hp existed — skip rather than crash
+  const barWidth = radius * 2.5;
+  const barHeight = 3;
+  const barX = x - barWidth / 2;
+  const barY = y - radius - 8;
+  const ratio = Math.max(0, Math.min(1, hp / maxHp));
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+
+  let fillColor;
+  if (ratio > 0.5) fillColor = "#3fbf5f";
+  else if (ratio > 0.2) fillColor = "#e0c040";
+  else fillColor = "#d9484a";
+
+  ctx.fillStyle = fillColor;
+  ctx.fillRect(barX, barY, barWidth * ratio, barHeight);
+}
+
 function draw(snapshot) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawArenaBackground();
   if (!snapshot) return;
+
+  updateElixirBars(snapshot.players);
 
   for (const entity of snapshot.entities) {
     const x = entity.x * TILE;
@@ -59,6 +105,8 @@ function draw(snapshot) {
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+
+    drawHpBar(x, y, radius, entity.hp, entity.max_hp);
 
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";

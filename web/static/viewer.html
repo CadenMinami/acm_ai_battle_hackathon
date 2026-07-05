@@ -16,7 +16,11 @@
       <option value="25">8x</option>
     </select>
   </div>
-  <canvas id="board" width="360" height="640" class="block mx-auto border-2 border-arena-line rounded"></canvas>
+  <div class="flex items-center justify-center gap-3">
+    <div id="elixir-0" class="flex flex-col-reverse gap-[2px]"></div>
+    <canvas id="board" width="360" height="640" class="border-2 border-arena-line rounded"></canvas>
+    <div id="elixir-1" class="flex flex-col-reverse gap-[2px]"></div>
+  </div>
   <script src="/static/cards.js"></script>
   <script src="/static/viewer.js"></script>
 </body>
