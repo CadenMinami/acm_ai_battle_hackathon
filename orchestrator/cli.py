@@ -1,5 +1,6 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from orchestrator.match import run_match
@@ -15,14 +16,18 @@ def main() -> None:
     parser.add_argument("--log-path", type=Path, default=None, help="If set, append a per-tick JSONL snapshot log here")
     args = parser.parse_args()
 
-    result = run_match(
-        agent_a_command=args.agent_a.split(),
-        agent_b_command=args.agent_b.split(),
-        seed=args.seed,
-        deadline_seconds=args.deadline_seconds,
-        max_ticks=args.max_ticks,
-        log_path=args.log_path,
-    )
+    try:
+        result = run_match(
+            agent_a_command=args.agent_a.split(),
+            agent_b_command=args.agent_b.split(),
+            seed=args.seed,
+            deadline_seconds=args.deadline_seconds,
+            max_ticks=args.max_ticks,
+            log_path=args.log_path,
+        )
+    except OSError as exc:
+        print(f"Could not start agent command: {exc}", file=sys.stderr)
+        sys.exit(1)
     print(json.dumps(result, indent=2))
 
 
