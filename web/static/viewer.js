@@ -60,6 +60,7 @@ function draw(snapshot) {
     ctx.fill();
     ctx.restore();
 
+    ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = `${entity.is_tower ? 14 : 11}px sans-serif`;
