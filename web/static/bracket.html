@@ -25,7 +25,7 @@
 
     function matchCard(match) {
       const div = document.createElement("div");
-      div.className = "border border-arena-line rounded p-3 bg-arena min-w-[180px] mb-4";
+      div.className = "border border-arena-line rounded p-3 bg-arena min-w-[180px]";
 
       const rowA = document.createElement("div");
       rowA.className = match.winner === match.a ? "text-gold font-bold" : "text-ink-muted";
@@ -67,17 +67,21 @@
         }
         bracketEl.innerHTML = "";
         data.rounds.forEach((round, roundIndex) => {
-          const wrapper = document.createElement("div");
-          wrapper.className = "flex flex-col justify-around";
-          wrapper.style.gap = `${16 * Math.pow(2, roundIndex)}px`;
+          const column = document.createElement("div");
+          column.className = "flex flex-col";
 
           const label = document.createElement("div");
           label.className = "text-ink-muted text-xs text-center mb-2";
           label.textContent = roundIndex + 1 === data.rounds.length ? "Final" : `Round ${roundIndex + 1}`;
-          wrapper.appendChild(label);
+          column.appendChild(label);
 
-          round.forEach((match) => wrapper.appendChild(matchCard(match)));
-          bracketEl.appendChild(wrapper);
+          const matches = document.createElement("div");
+          matches.className = "flex flex-col justify-around flex-1";
+          matches.style.gap = `${16 * Math.pow(2, roundIndex)}px`;
+          round.forEach((match) => matches.appendChild(matchCard(match)));
+          column.appendChild(matches);
+
+          bracketEl.appendChild(column);
         });
       })
       .catch(renderLoadError);

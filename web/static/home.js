@@ -3,6 +3,7 @@ const bracketList = document.getElementById("bracket-list");
 const bracketSection = document.getElementById("bracket-section");
 const matchesSection = document.getElementById("matches-section");
 const emptyState = document.getElementById("empty-state");
+const loadError = document.getElementById("load-error");
 const refreshButton = document.getElementById("refresh");
 
 function formatTime(mtime) {
@@ -28,32 +29,41 @@ function makeCard(title, subtitle, href) {
 async function loadBrowse() {
   matchesList.innerHTML = "";
   bracketList.innerHTML = "";
+  emptyState.classList.add("hidden");
+  loadError.classList.add("hidden");
 
-  const response = await fetch("/api/browse");
-  const data = await response.json();
+  try {
+    const response = await fetch("/api/browse");
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    const data = await response.json();
 
-  if (data.logs.length === 0 && data.results.length === 0) {
-    emptyState.classList.remove("hidden");
+    if (data.logs.length === 0 && data.results.length === 0) {
+      emptyState.classList.remove("hidden");
+      matchesSection.classList.add("hidden");
+      bracketSection.classList.add("hidden");
+      return;
+    }
+
+    if (data.results.length > 0) {
+      bracketSection.classList.remove("hidden");
+      for (const result of data.results) {
+        const href = `/bracket?results=${encodeURIComponent(result.path)}`;
+        bracketList.appendChild(makeCard(result.path, formatTime(result.mtime), href));
+      }
+    } else {
+      bracketSection.classList.add("hidden");
+    }
+
+    matchesSection.classList.remove("hidden");
+    for (const log of data.logs) {
+      const href = `/viewer?log=${encodeURIComponent(log.path)}&mode=replay`;
+      matchesList.appendChild(makeCard(log.path, formatTime(log.mtime), href));
+    }
+  } catch (err) {
     matchesSection.classList.add("hidden");
     bracketSection.classList.add("hidden");
-    return;
-  }
-  emptyState.classList.add("hidden");
-
-  if (data.results.length > 0) {
-    bracketSection.classList.remove("hidden");
-    for (const result of data.results) {
-      const href = `/bracket?results=${encodeURIComponent(result.path)}`;
-      bracketList.appendChild(makeCard(result.path, formatTime(result.mtime), href));
-    }
-  } else {
-    bracketSection.classList.add("hidden");
-  }
-
-  matchesSection.classList.remove("hidden");
-  for (const log of data.logs) {
-    const href = `/viewer?log=${encodeURIComponent(log.path)}&mode=replay`;
-    matchesList.appendChild(makeCard(log.path, formatTime(log.mtime), href));
+    loadError.textContent = `Could not load matches: ${err.message}`;
+    loadError.classList.remove("hidden");
   }
 }
 

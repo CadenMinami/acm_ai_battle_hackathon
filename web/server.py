@@ -29,9 +29,12 @@ def _list_directory(directory: Path, pattern: str) -> List[Dict[str, Any]]:
         return []
     entries = []
     for path in directory.glob(pattern):
-        if not path.is_file():
+        try:
+            if not path.is_file():
+                continue
+            stat = path.stat()
+        except OSError:
             continue
-        stat = path.stat()
         try:
             display_path = str(path.relative_to(Path.cwd()))
         except ValueError:
