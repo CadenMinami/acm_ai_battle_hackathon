@@ -3,24 +3,21 @@
 <head>
   <meta charset="utf-8">
   <title>Battle Sim Viewer</title>
-  <style>
-    body { font-family: monospace; background: #111; color: #eee; }
-    canvas { background: #1b3a1b; display: block; margin: 20px auto; border: 2px solid #444; }
-    #controls { text-align: center; }
-  </style>
+  <link rel="stylesheet" href="/static/theme.css">
 </head>
-<body>
-  <div id="controls">
-    <button id="playPause">Play</button>
-    <input id="scrub" type="range" min="0" max="0" value="0" style="width: 400px;">
-    <select id="speed">
+<body class="bg-arena-dark text-ink font-mono min-h-screen">
+  <div class="max-w-md mx-auto py-4 flex items-center justify-center gap-3">
+    <button id="playPause" class="border border-arena-line px-3 py-1 rounded hover:border-gold hover:text-gold transition-colors">Play</button>
+    <input id="scrub" type="range" min="0" max="0" value="0" class="flex-1 accent-gold">
+    <select id="speed" class="bg-arena border border-arena-line rounded px-2 py-1">
       <option value="200">1x</option>
       <option value="100">2x</option>
       <option value="50">4x</option>
       <option value="25">8x</option>
     </select>
   </div>
-  <canvas id="board" width="360" height="640"></canvas>
+  <canvas id="board" width="360" height="640" class="block mx-auto border-2 border-arena-line rounded"></canvas>
+  <script src="/static/cards.js"></script>
   <script src="/static/viewer.js"></script>
 </body>
 </html>

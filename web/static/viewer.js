@@ -5,6 +5,8 @@ const mode = params.get("mode") || "replay"; // "live" or "replay"
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const TILE = 20; // pixels per arena tile (18 wide x 32 tall -> 360x640)
+const ARENA_WIDTH = 360;
+const ARENA_HEIGHT = 640;
 
 function drawMessage(lines) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -13,31 +15,76 @@ function drawMessage(lines) {
   lines.forEach((line, i) => ctx.fillText(line, 16, 30 + i * 18));
 }
 
+function drawArenaBackground() {
+  const bgGradient = ctx.createLinearGradient(0, 0, 0, ARENA_HEIGHT);
+  bgGradient.addColorStop(0, "#1b3a2e");
+  bgGradient.addColorStop(0.5, "#173322");
+  bgGradient.addColorStop(1, "#1b3a2e");
+  ctx.fillStyle = bgGradient;
+  ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+
+  const riverGradient = ctx.createLinearGradient(0, ARENA_HEIGHT / 2 - 18, 0, ARENA_HEIGHT / 2 + 18);
+  riverGradient.addColorStop(0, "rgba(74, 144, 217, 0.15)");
+  riverGradient.addColorStop(0.5, "rgba(74, 144, 217, 0.35)");
+  riverGradient.addColorStop(1, "rgba(74, 144, 217, 0.15)");
+  ctx.fillStyle = riverGradient;
+  ctx.fillRect(0, ARENA_HEIGHT / 2 - 18, ARENA_WIDTH, 36);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+  ctx.lineWidth = 1;
+  [ARENA_WIDTH * 0.3, ARENA_WIDTH * 0.7].forEach((x) => {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, ARENA_HEIGHT);
+    ctx.stroke();
+  });
+}
+
 function draw(snapshot) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawArenaBackground();
   if (!snapshot) return;
 
   for (const entity of snapshot.entities) {
     const x = entity.x * TILE;
     const y = (32 - entity.y) * TILE; // flip so player 0 renders at the bottom
-    ctx.fillStyle = entity.player_id === 0 ? "#4a90d9" : "#d94a4a";
+    const teamColor = entity.player_id === 0 ? "#4a90d9" : "#d94a4a";
+    const radius = entity.is_tower ? 12 : 8;
+
+    ctx.save();
+    ctx.shadowColor = teamColor;
+    ctx.shadowBlur = entity.is_tower ? 14 : 8;
+    ctx.fillStyle = teamColor;
     ctx.beginPath();
-    ctx.arc(x, y, entity.is_tower ? 10 : 6, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${entity.is_tower ? 14 : 11}px sans-serif`;
+    ctx.fillText(getCardIcon(entity.card), x, y);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
     ctx.fillStyle = "#fff";
     ctx.font = "9px monospace";
-    ctx.fillText(entity.card, x + 8, y);
+    ctx.fillText(entity.card, x + radius + 3, y + 3);
   }
 
-  ctx.fillStyle = "#fff";
-  ctx.font = "12px monospace";
-  ctx.fillText(`tick ${snapshot.tick}`, 10, 16);
+  ctx.fillStyle = "#f5f5f0";
+  ctx.font = "bold 13px monospace";
+  ctx.fillText(`tick ${snapshot.tick}`, 10, 18);
+
   snapshot.players.forEach((p, i) => {
-    ctx.fillText(
-      `p${i} elixir=${p.elixir.toFixed(1)} king=${Math.round(p.king_hp)}`,
-      10,
-      32 + i * 14
-    );
+    const color = i === 0 ? "#4a90d9" : "#d94a4a";
+    const y = 36 + i * 16;
+    ctx.fillStyle = color;
+    ctx.font = "11px sans-serif";
+    ctx.fillText("💧", 10, y);
+    ctx.fillStyle = "#f5f5f0";
+    ctx.font = "11px monospace";
+    ctx.fillText(`${p.elixir.toFixed(1)}  king ${Math.round(p.king_hp)}`, 26, y);
   });
 }
 
