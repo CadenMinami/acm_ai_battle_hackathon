@@ -1,9 +1,11 @@
 import random
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from orchestrator import GAMEDATA_PATH
 from orchestrator.agent_process import AgentProcess
+from orchestrator.match_log import append_snapshot, build_snapshot
 from orchestrator.state_projection import project_state
 
 from clasher.engine import BattleEngine
@@ -27,6 +29,7 @@ def run_match(
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS,
     max_ticks: int = DEFAULT_MAX_TICKS,
     startup_grace_seconds: float = DEFAULT_STARTUP_GRACE_SECONDS,
+    log_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     random.seed(seed)
 
@@ -45,6 +48,9 @@ def run_match(
 
         for _tick in range(1, max_ticks + 1):
             battle.step()
+
+            if log_path is not None:
+                append_snapshot(log_path, build_snapshot(battle))
 
             if battle.tick % POLL_EVERY_N_TICKS == 0:
                 request_id += 1

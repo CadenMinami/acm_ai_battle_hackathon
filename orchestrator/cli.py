@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import json
 import os
+from pathlib import Path
 
 from orchestrator.match import run_match
 
@@ -13,6 +14,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--deadline-seconds", type=float, default=0.1)
     parser.add_argument("--max-ticks", type=int, default=12000)
+    parser.add_argument("--log-path", type=Path, default=None, help="If set, append a per-tick JSONL snapshot log here")
     args = parser.parse_args()
 
     with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
@@ -22,6 +24,7 @@ def main() -> None:
             seed=args.seed,
             deadline_seconds=args.deadline_seconds,
             max_ticks=args.max_ticks,
+            log_path=args.log_path,
         )
     print(json.dumps(result, indent=2))
 

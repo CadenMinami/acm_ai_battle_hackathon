@@ -35,12 +35,16 @@ def test_bad_deploy_coordinates_are_noop_not_forfeit():
     assert result["forfeited_by"] is None
 
 
-def test_full_match_between_baseline_agents_reaches_conclusion():
+def test_full_match_between_baseline_agents_reaches_conclusion(tmp_path):
+    log_path = tmp_path / "match.jsonl"
     result = run_match(
         agent_a_command=BASELINE,
         agent_b_command=BASELINE,
         seed=42,
+        log_path=log_path,
     )
     assert result["completed"] is True
     assert result["forfeited_by"] is None
     assert result["winner"] in (0, 1, None)
+    assert log_path.exists()
+    assert len(log_path.read_text().strip().split("\n")) == result["ticks"]
