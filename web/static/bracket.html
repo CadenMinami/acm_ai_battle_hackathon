@@ -16,11 +16,30 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     const resultsPath = params.get("results") || "tournament/results.json";
+    const tbody = document.querySelector("#bracket tbody");
+
+    const renderLoadError = () => {
+      tbody.innerHTML = "";
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 5;
+      cell.textContent = `Could not load results file: ${resultsPath}`;
+      row.appendChild(cell);
+      tbody.appendChild(row);
+    };
 
     fetch(`/results?path=${encodeURIComponent(resultsPath)}`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Results request failed: ${res.status}`);
+        }
+        return res.json();
+      })
       .then((data) => {
-        const tbody = document.querySelector("#bracket tbody");
+        if (!Array.isArray(data.rounds)) {
+          renderLoadError();
+          return;
+        }
         data.rounds.forEach((round, roundIndex) => {
           round.forEach((match) => {
             const row = document.createElement("tr");
@@ -31,7 +50,8 @@
             tbody.appendChild(row);
           });
         });
-      });
+      })
+      .catch(renderLoadError);
   </script>
 </body>
 </html>
