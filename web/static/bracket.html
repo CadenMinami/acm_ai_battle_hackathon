@@ -4,51 +4,80 @@
 <head>
   <meta charset="utf-8">
   <title>Battle Sim Bracket</title>
-  <style>
-    body { font-family: monospace; background: #111; color: #eee; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; max-width: 700px; margin: 0 auto; }
-    th, td { border: 1px solid #444; padding: 8px; text-align: left; }
-    a { color: #4a90d9; }
-  </style>
+  <link rel="stylesheet" href="/static/theme.css">
 </head>
-<body>
-  <table id="bracket"><thead><tr><th>Round</th><th>A</th><th>B</th><th>Winner</th><th>Replay</th></tr></thead><tbody></tbody></table>
+<body class="bg-arena-dark text-ink font-mono min-h-screen p-8">
+  <h1 class="text-xl text-gold mb-6 text-center">Tournament Bracket</h1>
+  <div id="bracket" class="flex gap-10 overflow-x-auto justify-center"></div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const resultsPath = params.get("results") || "tournament/results.json";
-    const tbody = document.querySelector("#bracket tbody");
+    const bracketEl = document.getElementById("bracket");
 
-    const renderLoadError = () => {
-      tbody.innerHTML = "";
-      const row = document.createElement("tr");
-      const cell = document.createElement("td");
-      cell.colSpan = 5;
-      cell.textContent = `Could not load results file: ${resultsPath}`;
-      row.appendChild(cell);
-      tbody.appendChild(row);
-    };
+    function renderLoadError(err) {
+      bracketEl.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "text-team-red";
+      p.textContent = `Could not load results file: ${resultsPath}` + (err && err.message ? ` (${err.message})` : "");
+      bracketEl.appendChild(p);
+    }
+
+    function matchCard(match) {
+      const div = document.createElement("div");
+      div.className = "relative border border-arena-line rounded p-3 bg-arena min-w-[180px] mb-4";
+
+      const rowA = document.createElement("div");
+      rowA.className = match.winner === match.a ? "text-gold font-bold" : "text-ink-muted";
+      rowA.textContent = match.a;
+
+      const rowB = document.createElement("div");
+      rowB.className = match.winner === match.b ? "text-gold font-bold" : "text-ink-muted";
+      rowB.textContent = match.b ?? "—";
+
+      const linkRow = document.createElement("div");
+      linkRow.className = "mt-2";
+      if (match.log) {
+        const a = document.createElement("a");
+        a.href = `/viewer?log=${encodeURIComponent(match.log)}&mode=replay`;
+        a.className = "text-team-blue hover:text-gold text-xs";
+        a.textContent = "watch";
+        linkRow.appendChild(a);
+      } else {
+        const span = document.createElement("span");
+        span.className = "text-ink-muted text-xs";
+        span.textContent = "(bye)";
+        linkRow.appendChild(span);
+      }
+
+      div.appendChild(rowA);
+      div.appendChild(rowB);
+      div.appendChild(linkRow);
+      return div;
+    }
 
     fetch(`/results?path=${encodeURIComponent(resultsPath)}`)
       .then((res) => {
-        if (!res.ok) {
-          throw new Error(`Results request failed: ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json();
       })
       .then((data) => {
-        if (!Array.isArray(data.rounds)) {
-          renderLoadError();
-          return;
+        if (!Array.isArray(data.rounds) || data.rounds.length === 0) {
+          throw new Error("no rounds in results");
         }
+        bracketEl.innerHTML = "";
         data.rounds.forEach((round, roundIndex) => {
-          round.forEach((match) => {
-            const row = document.createElement("tr");
-            const replayLink = match.log
-              ? `<a href="/viewer?log=${encodeURIComponent(match.log)}&mode=replay">watch</a>`
-              : "(bye)";
-            row.innerHTML = `<td>${roundIndex + 1}</td><td>${match.a}</td><td>${match.b ?? "-"}</td><td>${match.winner}</td><td>${replayLink}</td>`;
-            tbody.appendChild(row);
-          });
+          const wrapper = document.createElement("div");
+          wrapper.className = "flex flex-col justify-around";
+          wrapper.style.gap = `${16 * Math.pow(2, roundIndex)}px`;
+
+          const label = document.createElement("div");
+          label.className = "text-ink-muted text-xs text-center mb-2";
+          label.textContent = roundIndex + 1 === data.rounds.length ? "Final" : `Round ${roundIndex + 1}`;
+          wrapper.appendChild(label);
+
+          round.forEach((match) => wrapper.appendChild(matchCard(match)));
+          bracketEl.appendChild(wrapper);
         });
       })
       .catch(renderLoadError);
