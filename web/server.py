@@ -32,7 +32,11 @@ def _list_directory(directory: Path, pattern: str) -> List[Dict[str, Any]]:
         if not path.is_file():
             continue
         stat = path.stat()
-        entries.append({"path": str(path), "mtime": stat.st_mtime, "size": stat.st_size})
+        try:
+            display_path = str(path.relative_to(Path.cwd()))
+        except ValueError:
+            display_path = str(path)
+        entries.append({"path": display_path, "mtime": stat.st_mtime, "size": stat.st_size})
     entries.sort(key=lambda entry: entry["mtime"], reverse=True)
     return entries
 
@@ -48,6 +52,11 @@ def browse() -> JSONResponse:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/viewer")
+def viewer_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "viewer.html")
 
 
 @app.get("/bracket")

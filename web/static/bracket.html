@@ -44,7 +44,7 @@
           round.forEach((match) => {
             const row = document.createElement("tr");
             const replayLink = match.log
-              ? `<a href="/?log=${encodeURIComponent(match.log)}&mode=replay">watch</a>`
+              ? `<a href="/viewer?log=${encodeURIComponent(match.log)}&mode=replay">watch</a>`
               : "(bye)";
             row.innerHTML = `<td>${roundIndex + 1}</td><td>${match.a}</td><td>${match.b ?? "-"}</td><td>${match.winner}</td><td>${replayLink}</td>`;
             tbody.appendChild(row);

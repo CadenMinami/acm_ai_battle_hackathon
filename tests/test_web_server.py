@@ -58,8 +58,16 @@ def test_browse_returns_empty_lists_when_directories_are_missing(tmp_path, monke
     assert response.json() == {"logs": [], "results": []}
 
 
-def test_index_returns_viewer_markup():
+def test_index_returns_home_page_markup():
     response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Battle Sim" in response.text
+    assert "/static/home.js" in response.text
+
+
+def test_viewer_route_returns_viewer_markup():
+    response = client.get("/viewer")
 
     assert response.status_code == 200
     assert "Battle Sim Viewer" in response.text
