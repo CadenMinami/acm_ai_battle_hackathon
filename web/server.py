@@ -1,12 +1,15 @@
 import json
 from pathlib import Path
+from typing import Any, Dict, List
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-ALLOWED_ROOTS = [Path("logs").resolve(), Path("tournament").resolve()]
+LOGS_DIR = Path("logs").resolve()
+TOURNAMENT_DIR = Path("tournament").resolve()
+ALLOWED_ROOTS = [LOGS_DIR, TOURNAMENT_DIR]
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -19,6 +22,27 @@ def _is_allowed(candidate: Path) -> bool:
         if candidate == allowed_root or candidate.is_relative_to(allowed_root):
             return True
     return False
+
+
+def _list_directory(directory: Path, pattern: str) -> List[Dict[str, Any]]:
+    if not directory.exists():
+        return []
+    entries = []
+    for path in directory.glob(pattern):
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        entries.append({"path": str(path), "mtime": stat.st_mtime, "size": stat.st_size})
+    entries.sort(key=lambda entry: entry["mtime"], reverse=True)
+    return entries
+
+
+@app.get("/api/browse")
+def browse() -> JSONResponse:
+    return JSONResponse({
+        "logs": _list_directory(LOGS_DIR, "*.jsonl"),
+        "results": _list_directory(TOURNAMENT_DIR, "*.json"),
+    })
 
 
 @app.get("/")

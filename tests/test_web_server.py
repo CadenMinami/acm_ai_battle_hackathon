@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +19,43 @@ def write_jsonl(path, snapshots):
 
 def allow_tmp_path(monkeypatch, tmp_path):
     monkeypatch.setattr(web_server, "ALLOWED_ROOTS", [tmp_path.resolve()])
+
+
+def test_browse_lists_logs_and_results_sorted_newest_first(tmp_path, monkeypatch):
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    tournament_dir = tmp_path / "tournament"
+    tournament_dir.mkdir()
+    monkeypatch.setattr(web_server, "LOGS_DIR", logs_dir)
+    monkeypatch.setattr(web_server, "TOURNAMENT_DIR", tournament_dir)
+
+    old_log = logs_dir / "old.jsonl"
+    old_log.write_text('{"tick": 1}\n')
+    new_log = logs_dir / "new.jsonl"
+    new_log.write_text('{"tick": 1}\n')
+    os.utime(old_log, (1_000_000, 1_000_000))
+    os.utime(new_log, (2_000_000, 2_000_000))
+
+    results_file = tournament_dir / "results.json"
+    results_file.write_text('{"rounds": []}')
+
+    response = client.get("/api/browse")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [entry["path"] for entry in data["logs"]] == [str(new_log), str(old_log)]
+    assert len(data["results"]) == 1
+    assert data["results"][0]["path"] == str(results_file)
+
+
+def test_browse_returns_empty_lists_when_directories_are_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(web_server, "LOGS_DIR", tmp_path / "nonexistent_logs")
+    monkeypatch.setattr(web_server, "TOURNAMENT_DIR", tmp_path / "nonexistent_tournament")
+
+    response = client.get("/api/browse")
+
+    assert response.status_code == 200
+    assert response.json() == {"logs": [], "results": []}
 
 
 def test_index_returns_viewer_markup():
