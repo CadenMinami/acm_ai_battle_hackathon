@@ -63,3 +63,15 @@ The replay viewer needs a `log` and `mode` query param — it doesn't work at th
 ## Docker Sandboxing Note
 
 A Docker image definition exists at `docker/agent.Dockerfile` for future agent sandboxing work. Today, agent commands are opaque `list[str]` values passed to subprocesses, and the tournament runner does not enforce containerization. Treat student-submitted commands as trusted-LAN-only until the club decides and implements the sandbox policy.
+
+## Rebuilding The Theme
+
+If you change any Tailwind utility classes in `web/static/*.html`, regenerate `web/static/theme.css`:
+
+```bash
+curl -sLo /tmp/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64
+chmod +x /tmp/tailwindcss
+/tmp/tailwindcss -i web/tailwind-input.css -o web/static/theme.css --minify
+```
+
+Replace `tailwindcss-macos-arm64` with your platform's binary name (`tailwindcss-linux-x64`, `tailwindcss-windows-x64.exe`, etc. — see the [releases page](https://github.com/tailwindlabs/tailwindcss/releases/latest)) if you're not on Apple Silicon. This is the only build step in the project — everything else is plain HTML/CSS/JS served directly by FastAPI.
