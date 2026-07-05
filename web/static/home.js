@@ -14,7 +14,6 @@ function makeCard(title, subtitle, href) {
   const a = document.createElement("a");
   a.href = href;
   a.className = "block border border-arena-line rounded p-4 hover:border-gold hover:text-gold transition-colors";
-  a.innerHTML = "";
   const titleDiv = document.createElement("div");
   titleDiv.className = "font-bold";
   titleDiv.textContent = title;

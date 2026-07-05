@@ -17,26 +17,28 @@ pip install -r requirements.txt
 Run two agents through the orchestrator CLI:
 
 ```bash
-python -m orchestrator.cli \
-  --agent-a "python agents/baseline_random/agent.py" \
-  --agent-b "python agents/baseline_random/agent.py" \
+.venv/bin/python -m orchestrator.cli \
+  --agent-a ".venv/bin/python agents/baseline_random/agent.py" \
+  --agent-b ".venv/bin/python agents/baseline_random/agent.py" \
   --seed 123 \
   --log-path logs/example_match.jsonl
 ```
 
 The CLI prints a JSON match result. When `--log-path` is provided, the replay is written as one JSON snapshot per line.
 
+Note on `--seed`: it makes the battle engine itself deterministic, but `agents/baseline_random/agent.py` uses Python's own unseeded `random` module in its own subprocess — so re-running the same seed with a stochastic agent like the baseline will not necessarily reproduce the same match outcome.
+
 ## Run A Bracket
 
 Use `tournament.bracket.run_bracket` with agent entries shaped as `{"name": str, "command": list[str]}`:
 
 ```bash
-python - <<'PY'
+.venv/bin/python - <<'PY'
 from pathlib import Path
 from tournament.bracket import run_bracket
 
 agents = [
-    {"name": f"agent{i}", "command": ["python", "agents/baseline_random/agent.py"]}
+    {"name": f"agent{i}", "command": [".venv/bin/python", "agents/baseline_random/agent.py"]}
     for i in range(4)
 ]
 
