@@ -1,0 +1,37 @@
+<!-- web/static/bracket.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Battle Sim Bracket</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #eee; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; max-width: 700px; margin: 0 auto; }
+    th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+    a { color: #4a90d9; }
+  </style>
+</head>
+<body>
+  <table id="bracket"><thead><tr><th>Round</th><th>A</th><th>B</th><th>Winner</th><th>Replay</th></tr></thead><tbody></tbody></table>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const resultsPath = params.get("results") || "tournament/results.json";
+
+    fetch(`/results?path=${encodeURIComponent(resultsPath)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const tbody = document.querySelector("#bracket tbody");
+        data.rounds.forEach((round, roundIndex) => {
+          round.forEach((match) => {
+            const row = document.createElement("tr");
+            const replayLink = match.log
+              ? `<a href="/?log=${encodeURIComponent(match.log)}&mode=replay">watch</a>`
+              : "(bye)";
+            row.innerHTML = `<td>${roundIndex + 1}</td><td>${match.a}</td><td>${match.b ?? "-"}</td><td>${match.winner}</td><td>${replayLink}</td>`;
+            tbody.appendChild(row);
+          });
+        });
+      });
+  </script>
+</body>
+</html>
