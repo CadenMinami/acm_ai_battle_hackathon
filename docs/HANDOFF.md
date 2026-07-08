@@ -1,8 +1,6 @@
 # Handoff: AI Agent Battle Competition Platform
 
-Status: week-1 build complete, handed off for ~7 weeks of hardening before the live event
-Date: 2026-07-06
-Original builder: Caden (solo)
+Date: 2026-07-07
 
 This document is for the ACM members picking this project up. It assumes you've never seen the code. Read this once, top to bottom, before you touch anything — it'll save you from re-discovering decisions that were already made deliberately.
 
@@ -12,7 +10,7 @@ This document is for the ACM members picking this project up. It assumes you've 
 
 Students write AI agents (any language, as long as they speak a simple JSON-over-stdin/stdout protocol) that battle each other in a real-time simulator based on a Clash-Royale-style game. Agents deploy units, defend towers, and manage an elixir economy in head-to-head matches. The event format is a single-elimination bracket across all submitted agents, with a live leaderboard.
 
-**Timeline context:** this was built solo in one week (2026-06-29 to 2026-07-05) specifically so that every part of the system — engine, sandboxing, web UI, tournament tooling, and an end-to-end dry run — would have *something* working, rather than one piece being deep and the rest nonexistent. The event itself is roughly two months out from the original build date. The ~7 weeks between now and then are for hardening what's here, not building from zero.
+**Timeline context:** the live event is roughly two months out. Every part of the system — engine, orchestration, web UI, tournament tooling — already works end-to-end; the weeks between now and the event are for hardening and extending what's here, not building from zero.
 
 **IP note, worth remembering:** the underlying engine is a fan-built simulation of a commercial mobile game using scraped card data (forked from `samdickson22/clash-simulator` on GitHub). Avoid using the real game's branding, art, or name in any event marketing or public-facing materials.
 
@@ -33,7 +31,7 @@ pip install -r requirements.txt
   --seed 123 \
   --log-path logs/example_match.jsonl
 
-# Launch the web UI (from the repo root — this matters, see §7)
+# Launch the web UI (from the repo root — this matters, see §4)
 uvicorn web.server:app --reload
 ```
 
@@ -103,7 +101,7 @@ Run the test suite any time you make a change: `.venv/bin/python -m pytest -q` �
 A plain copy (not a git submodule — that was a deliberate call, see the original spec §3) of the forked battle simulator. `src/clasher/` has the actual simulation: `battle.py` (tick loop, combat, tower destruction), `entities.py` (troops/buildings/spells), `player.py` (elixir, hand/deck cycling), `arena.py` (the 18×32 tile grid, deploy-zone legality).
 
 Two things worth knowing if you ever need to touch this:
-- **The engine's own `random` usage is global, not seeded per-battle.** Troop-spread and death-spawn positions use Python's global `random` module. Seeding before a match makes the *engine's* randomness reproducible, but an agent subprocess's own decisions are separate — see §8.
+- **The engine's own `random` usage is global, not seeded per-battle.** Troop-spread and death-spawn positions use Python's global `random` module. Seeding before a match makes the *engine's* randomness reproducible, but an agent subprocess's own decisions are separate — see §7.
 - **`BattleEngine.run_battle()` is never called anywhere in this codebase.** Its default `max_ticks=9090` cuts off before the engine's own sudden-death tiebreaker (`tiebreaker_time=360.0s`, ~10,900 ticks) can resolve. `orchestrator/match.py` drives `battle.step()` itself in its own loop with `max_ticks=12000` instead. If you ever see code calling `run_battle()`, that's a red flag — it will silently truncate close matches.
 
 ### `orchestrator/` — the referee
@@ -117,7 +115,7 @@ Two things worth knowing if you ever need to touch this:
 ### `agents/baseline_random/agent.py` — the reference implementation
 This is what every "vs. itself" match in this doc uses, and it's the model for what a real submission looks like: read one JSON line from stdin, decide, write one JSON line to stdout, repeat. It deliberately does **not** import anything from `clasher` or `orchestrator` — real student agents will eventually run in an isolated container with no access to this repo's internals, only the JSON arriving over stdin. It plays a uniformly random legal-ish move and relies on the engine's own `deploy_card()` to silently reject anything it can't actually afford yet.
 
-**Important:** it uses Python's own unseeded `random`, not a seeded RNG. See §8 for what this means for reproducibility.
+**Important:** it uses Python's own unseeded `random`, not a seeded RNG. See §7 for what this means for reproducibility.
 
 ### `tournament/bracket.py` — the tournament runner
 `run_bracket(agents, seed, logs_dir, results_path)` takes a list of `{"name": str, "command": list[str]}` entries, builds a single-elimination bracket (best-of-1, byes for odd counts), and calls `run_match()` once per matchup with a distinct `log_path`. Writes `results.json` shaped as `{"rounds": [[{"a", "b", "winner", "log"}, ...], ...]}`.
@@ -192,11 +190,11 @@ or
 
 | Decision | Why | Where to change it if needed |
 |---|---|---|
-| Vendored engine, not a git submodule | Avoids double-commit bookkeeping on a solo one-week timeline | `engine/` — re-vendor from the fork if upstream changes |
-| Plain JS/HTML, no framework | No build pipeline for a one-week build; a future team can migrate deliberately | `web/static/*` |
+| Vendored engine, not a git submodule | Avoids double-commit bookkeeping across two repos | `engine/` — re-vendor from the fork if upstream changes |
+| Plain JS/HTML, no framework | No build pipeline to maintain; a future team can migrate deliberately | `web/static/*` |
 | HTTP polling, not WebSockets | The orchestrator already writes a JSONL log every tick — polling `/snapshot/latest` avoids bridging a synchronous tick loop into an async push channel, for ~250ms of latency nobody watching a replay notices | `web/server.py`, `viewer.js` |
-| Docker sandboxing is opt-in | Every agent running this week was our own script, not real student code — per-submission custom images and enforcement are real Phase 2 work for your team | `docker/agent.Dockerfile`, wherever the tournament runner constructs agent commands |
-| Best-of-1 bracket, no series | Tripling match count and tracking series state wasn't worth the time this week | `tournament/bracket.py` |
+| Docker sandboxing is opt-in | Every agent run so far was our own script, not real student code — per-submission custom images and enforcement are real Phase 2 work for your team | `docker/agent.Dockerfile`, wherever the tournament runner constructs agent commands |
+| Best-of-1 bracket, no series | Tripling match count and tracking series state wasn't worth it in the initial build | `tournament/bracket.py` |
 | Tailwind precompiled and committed, not CDN | Works fully offline at demo time; no CDN dependency if venue wifi is bad | `web/tailwind-input.css` → rebuild via the README's documented command |
 
 ---
@@ -212,33 +210,82 @@ These are **documented, not accidental.** Some are genuinely worth fixing soon; 
 - If both players hit 5 consecutive misses on the exact same poll, `orchestrator/match.py` awards the "win" to whichever player's forfeit check runs second in the loop (currently player 1), rather than treating it as a draw. Edge case, but a real one.
 
 **Accepted tradeoffs, not bugs:**
-- `--seed` makes the battle engine deterministic, but `agents/baseline_random/agent.py` (and any agent using its own unseeded RNG) is not — re-running the same seed with stochastic agents will not reproduce the same match. This is inherent to the protocol (agents are independent processes the orchestrator can't seed), not something week-1 was expected to solve.
+- `--seed` makes the battle engine deterministic, but `agents/baseline_random/agent.py` (and any agent using its own unseeded RNG) is not — re-running the same seed with stochastic agents will not reproduce the same match. This is inherent to the protocol (agents are independent processes the orchestrator can't seed), not something the orchestrator can fix.
 - The bracket page shows rounds separated by spacing, not literal connector lines linking a match to its winner's slot in the next round — a full connector-line bracket tree was judged too much CSS complexity for the time available. It reads as a tournament; it isn't pixel-perfect.
 - No leaderboard/standings aggregation exists yet — the bracket page shows match-by-match results, not a computed win-count ranking. Nothing in `results.json`'s shape currently tracks cumulative wins across a larger event.
 - `web/server.py`'s `/snapshot/latest` re-reads and re-parses the entire log file on every poll (every 250ms in live mode) just to get the last line. Fine at demo scale (a few thousand ticks); would need optimizing (e.g., seek-from-end) for very long-running live matches.
 
-**Full detail, if you need it:** every task in both builds went through an individual code review and each build got a final whole-repo review; the complete finding-by-finding history (including things fixed along the way, not just what's still open) lives in `.superpowers/sdd/progress.md` and `.superpowers/sdd/progress-ui-redesign.md`. Those are gitignored working notes, not polished docs, but they're the ground truth if you want to trace *why* a specific line of code looks the way it does.
+---
+
+## 8. How students will build an agent
+
+An agent is any program that speaks the §5 protocol: read one JSON line from stdin, decide, write one JSON action line to stdout, flush, repeat. Any language a student wants, as long as it can do line-buffered JSON over pipes. `agents/baseline_random/agent.py` is the model submission — under 60 lines, fully self-contained — and everything below is visible in it.
+
+What a student needs to know to get a working agent:
+
+- **Player id comes in as the last command-line argument** (`0` = bottom/blue, `1` = top/red) — the orchestrator appends it when it spawns the process (`orchestrator/match.py`). Use it to know which half of the arena is yours; deploys must land on your own side. The baseline uses y 2–13 for player 0 and y 18–29 for player 1, x 1–17, on the 18×32 tile grid.
+- **Flush stdout after every response.** A response sitting in a buffer is a missed poll. This is the single most common way a first agent breaks.
+- **Answer within the deadline (~100ms), even if the answer is "do nothing."** An on-time `{"action": "none"}` is a successful poll and resets the miss counter; 5 consecutive misses forfeits the match (§5).
+- **Illegal deploys are silently rejected, not punished.** Not enough elixir, bad position — the engine's `deploy_card()` just ignores it. It's safe to try things; a smarter agent tracks its own elixir instead of relying on this.
+- **No imports from this repo.** Submissions will eventually run in an isolated container where the only input is the JSON on stdin. Anything that reaches into `clasher` or `orchestrator` internals is doing something a real submission won't be able to do.
+
+The local test loop to give students: run their agent against the baseline through the orchestrator CLI —
+
+```bash
+.venv/bin/python -m orchestrator.cli \
+  --agent-a "python3 my_agent.py" \
+  --agent-b ".venv/bin/python agents/baseline_random/agent.py" \
+  --seed 1 --log-path logs/my_test.jsonl
+```
+
+— then watch the replay in the web viewer.
+
+**Still to write: the participant-facing guide** (how to write, locally test, and submit an agent, as a standalone doc for students rather than this internal one). Hold off on writing it until the Docker submission format is locked down (§4's sandboxing decision), so it doesn't go stale while students are actively using it.
 
 ---
 
-## 8. Explicitly deferred to your team
+## 9. Building the benchmark agent
 
-Straight from the original spec (§12), still accurate:
+The benchmark agent is the house agent: meaningfully stronger than `baseline_random`, used for students to test against and for a qualifying/seeding run before the real bracket. It doesn't need to be brilliant — it needs to reliably beat random play so it's a meaningful bar.
 
-| Area | What's here now | What's deferred |
-|---|---|---|
-| Engine & protocol | Full: audited engine, fog-of-war, timeout/forfeit handling, real end-to-end tests | Tuning the ~100ms deadline against real (not baseline) student agents |
-| Sandboxing & logging | One shared Docker base image; per-tick JSONL log | Per-submission custom images; log compaction/rotation for a long-running tournament; **enforcing** the sandbox (see §4) |
-| Web UI | Now a real visual product (icons, health/elixir bars, bracket tree) — but still HTTP polling, no manual/drag-to-deploy play mode | WebSocket push; manual play controls; possible React migration if the team wants it |
-| Tournament tooling | Single-elimination, best-of-1, reuses `run_match` | Best-of-3 series; a qualifying/seeding run against a benchmark agent; running at full 32-agent scale |
-| Scale | Verified end-to-end with 4-8 agents | A full 32-agent (~300-game) dry run before the live event |
+**How to start:** create `agents/benchmark/agent.py` mirroring the baseline's structure — same stdin/stdout loop, same self-containment rule (no `clasher`/`orchestrator` imports). Only `choose_action()` should get smarter. Keeping it under the exact constraints students face guarantees anything it does is achievable by them too, and that it exercises the same protocol path.
 
-**Not started at all, flagged as a different document for a different audience:** participant-facing documentation — a guide for students on how to write, locally test, and submit an agent. This needs the Docker submission format locked down first so it doesn't go stale mid-way through when students are actively using it.
+A strategy ladder where each step should beat the one before it:
+
+1. **Elixir discipline** — wait until elixir is near full before deploying, instead of the baseline's 1.0 floor, so pushes come in bursts instead of a trickle.
+2. **Reactive defense** — parse `enemy_troops` each poll and deploy in whichever lane is under attack, between the attackers and your tower.
+3. **Card roles** — hardcode a role map for the 10 default-deck cards (tank / ranged support / swarm / spell) and order deploys accordingly: tank first, support behind it.
+4. **Tower targeting** — read `towers.enemy`; when one tower is damaged, keep pushing that lane to finish it.
+
+**How to know it's actually better:** run it against the baseline over a batch of seeds and count wins — a quick loop over `orchestrator.cli` with `--seed 1..N`, or drop both into a 4-entry `run_bracket` and read the results. Aim for a decisive win rate (baseline is random, so anything near 50% means the "strategy" isn't doing anything). One caveat from §7: the orchestrator can't seed an agent's own RNG, so if you want reproducible benchmark matches, seed it yourself inside the agent (e.g. from the player-id argument).
 
 ---
 
-## 9. A note on process (why you can trust this codebase)
+## 10. Adjusting the UI
 
-This was built using an AI-assisted TDD workflow: every task was implemented against a written spec, covered by a failing-test-first cycle where a test suite made sense, and reviewed by a separate pass before being marked done. Both the original 13-task build and the follow-on 7-task UI redesign each got a dedicated final whole-repository review at the end, independent of the per-task reviews, specifically looking for integration issues that only show up once everything is assembled — and both rounds found real cross-task bugs (things like a log-file overwrite race, an unrestricted file-read security gap, a CSS layout bug) that got fixed before being called done. This isn't a guarantee of zero remaining bugs, but it means the "obvious in hindsight" category of integration bug got a dedicated pass, not just per-file review.
+Everything frontend is in `web/static/` — plain HTML + JS, no framework, no npm, no build step for the JS (§4 has the full file-by-file walkthrough). Where to go for common changes:
 
-If you want the full commit-by-commit history of what was built when and why, `git log` on this repo is complete and readable — every commit message describes intent, not just "fix stuff."
+- **Home page** (match/bracket cards): `index.html` + `home.js`, fed by `/api/browse`.
+- **Replay/live viewer** (the canvas): `viewer.html` + `viewer.js` — arena background, unit circles, HP bars, elixir bars, playback controls all live here. Live mode polls `/snapshot/latest` every 250ms.
+- **Bracket page**: `bracket.html`. The known cosmetic gap is connector lines between rounds (§7).
+- **Card icons**: `cards.js` — a hardcoded name→emoji map for the 10 default-deck cards. If the deck ever changes, add entries here; unmapped cards degrade to `❔` rather than crashing.
+- **Styling**: edit Tailwind classes in the HTML/JS and, if needed, `tailwind-input.css` — then rebuild `theme.css` with the command in the README's "Rebuilding The Theme" section. **Never hand-edit `theme.css`** — it's a generated artifact that happens to be committed (so the site works offline).
+- **Backend routes**: `web/server.py`. If you add any endpoint that reads files, keep the path-allowlist validation pattern the existing endpoints use — it's the only thing standing between a LAN full of students and arbitrary file reads. And always start `uvicorn` from the repo root (the allowlist resolves against the working directory at import time).
+
+There are no automated frontend tests (§4) — the current bar is verifying changes in a real browser, so do at least that; adding a browser-automation harness would be a genuinely useful contribution.
+
+Bigger deferred UI work, if someone wants a meatier project: WebSocket push instead of polling, a manual/drag-to-deploy play mode, or a deliberate React migration.
+
+---
+
+## 11. Working on the brackets
+
+All tournament logic is `tournament/bracket.py`, and it gets match results only by calling the same `run_match()` everything else uses — keep it that way (§3). The real work items, roughly in priority order:
+
+- **An explicit tiebreak for draws.** Today a drawn match advances the first-listed agent (§7) — indefensible in a real event. Reasonable options: tower-HP differential from the final snapshot, or an immediate rematch on a fresh seed.
+- **Best-of-3 series.** Deliberately skipped in the initial build (§6). Needs series state in the loop and a `results.json` shape that records games within a matchup — decide the shape together with the leaderboard work below so you only migrate it once.
+- **Qualifying/seeding round.** Run every submission against the benchmark agent (§9) and seed the bracket by result, instead of bracket order being whatever order the list came in.
+- **A leaderboard.** `results.json` currently stores per-round matchups only — no cumulative win counts. A standings view needs a shape change (or a separate aggregation step) plus a page or section in `web/`.
+- **A full 32-agent dry run** well before the event. Verified at 4–8 agents so far. Watch `logs/` disk usage, total wall-clock time, and anything that behaves differently at depth-5 bracket sizes.
+
+Two operational sharp edges to remember while working here (both in §7/§4): re-running a bracket into the same `logs_dir` truncates the existing logs, and `run_bracket` doesn't create `results_path`'s parent directory if it's missing.
