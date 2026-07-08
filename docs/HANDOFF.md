@@ -98,7 +98,7 @@ Run the test suite any time you make a change: `.venv/bin/python -m pytest -q` �
 ## 4. Directory-by-directory walkthrough
 
 ### `engine/` — vendored, do not casually edit
-A plain copy (not a git submodule — that was a deliberate call, see the original spec §3) of the forked battle simulator. `src/clasher/` has the actual simulation: `battle.py` (tick loop, combat, tower destruction), `entities.py` (troops/buildings/spells), `player.py` (elixir, hand/deck cycling), `arena.py` (the 18×32 tile grid, deploy-zone legality).
+A plain copy (not a git submodule — a deliberate call, see §6) of the forked battle simulator. `src/clasher/` has the actual simulation: `battle.py` (tick loop, combat, tower destruction), `entities.py` (troops/buildings/spells), `player.py` (elixir, hand/deck cycling), `arena.py` (the 18×32 tile grid, deploy-zone legality).
 
 Two things worth knowing if you ever need to touch this:
 - **The engine's own `random` usage is global, not seeded per-battle.** Troop-spread and death-spawn positions use Python's global `random` module. Seeding before a match makes the *engine's* randomness reproducible, but an agent subprocess's own decisions are separate — see §7.
