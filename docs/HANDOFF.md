@@ -120,6 +120,8 @@ This is what every "vs. itself" match in this doc uses, and it's the model for w
 ### `tournament/bracket.py` — the tournament runner
 `run_bracket(agents, seed, logs_dir, results_path)` takes a list of `{"name": str, "command": list[str]}` entries, builds a single-elimination bracket (best-of-1, byes for odd counts), and calls `run_match()` once per matchup with a distinct `log_path`. Writes `results.json` shaped as `{"rounds": [[{"a", "b", "winner", "log"}, ...], ...]}`.
 
+Within each round, those matchups run concurrently in separate OS processes, capped at `os.cpu_count()` by default unless callers pass `max_workers`; rounds still run sequentially because each round needs the previous winners. Results are collected back in matchup order, not completion order, so `results.json` keeps the same shape and ordering expectations.
+
 A drawn match (`winner` is `None` from `run_match`) advances the first-listed agent — a real tournament needs an explicit tiebreak rule, and this is a known, documented thin-slice limitation.
 
 **Every time you run this, it truncates and rewrites the log files at `logs_dir`.** This was a real bug (append-mode logs would double up across bracket re-runs) that got fixed — `run_match` now unlinks any existing file at `log_path` before writing. Don't rely on old match logs surviving a bracket re-run into the same directory.
@@ -195,6 +197,7 @@ or
 | HTTP polling, not WebSockets | The orchestrator already writes a JSONL log every tick — polling `/snapshot/latest` avoids bridging a synchronous tick loop into an async push channel, for ~250ms of latency nobody watching a replay notices | `web/server.py`, `viewer.js` |
 | Docker sandboxing is opt-in | Every agent run so far was our own script, not real student code — per-submission custom images and enforcement are real Phase 2 work for your team | `docker/agent.Dockerfile`, wherever the tournament runner constructs agent commands |
 | Best-of-1 bracket, no series | Tripling match count and tracking series state wasn't worth it in the initial build | `tournament/bracket.py` |
+| Within-round matches parallelized with OS processes, not threads | `run_match` mutates process-global state (`random.seed`, `redirect_stdout`); threads would corrupt each other, processes isolate it | `tournament/bracket.py` |
 | Tailwind precompiled and committed, not CDN | Works fully offline at demo time; no CDN dependency if venue wifi is bad | `web/tailwind-input.css` → rebuild via the README's documented command |
 
 ---
@@ -286,6 +289,6 @@ All tournament logic is `tournament/bracket.py`, and it gets match results only 
 - **Best-of-3 series.** Deliberately skipped in the initial build (§6). Needs series state in the loop and a `results.json` shape that records games within a matchup — decide the shape together with the leaderboard work below so you only migrate it once.
 - **Qualifying/seeding round.** Run every submission against the benchmark agent (§9) and seed the bracket by result, instead of bracket order being whatever order the list came in.
 - **A leaderboard.** `results.json` currently stores per-round matchups only — no cumulative win counts. A standings view needs a shape change (or a separate aggregation step) plus a page or section in `web/`.
-- **A full 32-agent dry run** well before the event. Verified at 4–8 agents so far. Watch `logs/` disk usage, total wall-clock time, and anything that behaves differently at depth-5 bracket sizes.
+- **A full 32-agent dry run** well before the event. Verified at 4–8 agents so far. Watch `logs/` disk usage, total wall-clock time, and anything that behaves differently at depth-5 bracket sizes. Matches within each round now run in parallel, capped by CPU count unless `max_workers` is set. Peak concurrent OS processes is roughly worker cap × 3: each matchup driver process spawns 2 agent subprocesses, so a 16-matchup first round on an 8-core machine means about 24 simultaneous processes, not 48.
 
 Two operational sharp edges to remember while working here (both in §7/§4): re-running a bracket into the same `logs_dir` truncates the existing logs, and `run_bracket` doesn't create `results_path`'s parent directory if it's missing.
