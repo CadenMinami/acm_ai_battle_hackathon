@@ -18,3 +18,6 @@ logs/
 
 # Generated tournament results
 tournament/results.json
+
+# AI workflow scratch files — never commit these
+.superpowers/
