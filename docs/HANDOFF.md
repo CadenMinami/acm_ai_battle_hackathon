@@ -41,13 +41,16 @@ Open `http://localhost:8000/` — you'll see a home page listing any match logs 
 from pathlib import Path
 from tournament.bracket import run_bracket
 
-agents = [{"name": f"agent{i}", "command": [".venv/bin/python", "agents/baseline_random/agent.py"]} for i in range(8)]
-run_bracket(agents, seed=7, logs_dir=Path("logs"), results_path=Path("tournament/results.json"))
+if __name__ == "__main__":
+    agents = [{"name": f"agent{i}", "command": [".venv/bin/python", "agents/baseline_random/agent.py"]} for i in range(8)]
+    run_bracket(agents, seed=7, logs_dir=Path("logs"), results_path=Path("tournament/results.json"))
 ```
+
+The `if __name__ == "__main__":` guard is not optional if you save this as a script: bracket matches run in spawned worker processes, and spawn re-imports the main module — without the guard, every worker re-executes `run_bracket` at import time and crashes with a bootstrapping error.
 
 Refresh the home page and you'll see the bracket show up too, with a proper bracket-tree view and "watch" links into each match's replay.
 
-Run the test suite any time you make a change: `.venv/bin/python -m pytest -q` — currently 87 tests, all passing, no warnings.
+Run the test suite any time you make a change: `.venv/bin/python -m pytest -q` — currently 91 tests, all passing, no warnings.
 
 ---
 
@@ -289,6 +292,6 @@ All tournament logic is `tournament/bracket.py`, and it gets match results only 
 - **Best-of-3 series.** Deliberately skipped in the initial build (§6). Needs series state in the loop and a `results.json` shape that records games within a matchup — decide the shape together with the leaderboard work below so you only migrate it once.
 - **Qualifying/seeding round.** Run every submission against the benchmark agent (§9) and seed the bracket by result, instead of bracket order being whatever order the list came in.
 - **A leaderboard.** `results.json` currently stores per-round matchups only — no cumulative win counts. A standings view needs a shape change (or a separate aggregation step) plus a page or section in `web/`.
-- **A full 32-agent dry run** well before the event. Verified at 4–8 agents so far. Watch `logs/` disk usage, total wall-clock time, and anything that behaves differently at depth-5 bracket sizes. Matches within each round now run in parallel, capped by CPU count unless `max_workers` is set. Peak concurrent OS processes is roughly worker cap × 3: each matchup driver process spawns 2 agent subprocesses, so a 16-matchup first round on an 8-core machine means about 24 simultaneous processes, not 48.
+- **A full 32-agent dry run** well before the event. Verified at 4–8 agents so far. Watch `logs/` disk usage, total wall-clock time, and anything that behaves differently at depth-5 bracket sizes. Matches within each round now run in parallel, capped by CPU count unless `max_workers` is set. Peak concurrent OS processes is roughly worker cap × 3: each matchup driver process spawns 2 agent subprocesses, so a 16-matchup first round on an 8-core machine means about 24 simultaneous processes, not 48. One fairness hazard to watch: agent response deadlines are wall-clock (0.1s, 5 consecutive misses forfeits), so if the machine is CPU-saturated, a starved agent can spuriously forfeit — parallel results under heavy load can differ from what a serial run would produce. Baseline agents are too light to trigger this, but CPU-hungry student agents might; if the dry run shows unexpected forfeits, lower `max_workers` and re-run before assuming the agents are at fault.
 
 Two operational sharp edges to remember while working here (both in §7/§4): re-running a bracket into the same `logs_dir` truncates the existing logs, and `run_bracket` doesn't create `results_path`'s parent directory if it's missing.
