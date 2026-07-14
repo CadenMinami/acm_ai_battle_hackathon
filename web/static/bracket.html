@@ -39,7 +39,7 @@
       linkRow.className = "mt-2";
       if (match.log) {
         const a = document.createElement("a");
-        a.href = `/viewer?log=${encodeURIComponent(match.log)}&mode=replay`;
+        a.href = `/viewer?log=${encodeURIComponent(match.log)}&mode=replay&a=${encodeURIComponent(match.a)}&b=${encodeURIComponent(match.b)}`;
         a.className = "text-team-blue hover:text-gold text-xs";
         a.textContent = "watch";
         linkRow.appendChild(a);

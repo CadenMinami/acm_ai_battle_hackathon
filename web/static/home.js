@@ -25,6 +25,32 @@ function makeCard(title, subtitle, href) {
   return a;
 }
 
+function makeMatchCard(log, href) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.className = "block border border-arena-line rounded p-4 hover:border-gold hover:text-gold transition-colors";
+
+  const titleDiv = document.createElement("div");
+
+  const rowA = document.createElement("div");
+  rowA.className = log.winner === log.a ? "text-gold font-bold" : "text-ink-muted";
+  rowA.textContent = log.a;
+
+  const rowB = document.createElement("div");
+  rowB.className = log.winner === log.b ? "text-gold font-bold" : "text-ink-muted";
+  rowB.textContent = log.b;
+
+  const subtitleDiv = document.createElement("div");
+  subtitleDiv.className = "text-sm text-ink-muted mt-1";
+  subtitleDiv.textContent = formatTime(log.mtime);
+
+  titleDiv.appendChild(rowA);
+  titleDiv.appendChild(rowB);
+  a.appendChild(titleDiv);
+  a.appendChild(subtitleDiv);
+  return a;
+}
+
 async function loadBrowse() {
   matchesList.innerHTML = "";
   bracketList.innerHTML = "";
@@ -55,8 +81,13 @@ async function loadBrowse() {
 
     matchesSection.classList.remove("hidden");
     for (const log of data.logs) {
-      const href = `/viewer?log=${encodeURIComponent(log.path)}&mode=replay`;
-      matchesList.appendChild(makeCard(log.path, formatTime(log.mtime), href));
+      let href = `/viewer?log=${encodeURIComponent(log.path)}&mode=replay`;
+      if (log.a && log.b) {
+        href += `&a=${encodeURIComponent(log.a)}&b=${encodeURIComponent(log.b)}`;
+        matchesList.appendChild(makeMatchCard(log, href));
+      } else {
+        matchesList.appendChild(makeCard(log.path, formatTime(log.mtime), href));
+      }
     }
   } catch (err) {
     matchesSection.classList.add("hidden");
