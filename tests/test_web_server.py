@@ -48,6 +48,57 @@ def test_browse_lists_logs_and_results_sorted_newest_first(tmp_path, monkeypatch
     assert data["results"][0]["path"] == str(results_file)
 
 
+def test_browse_enriches_log_entries_with_match_names_from_results_json(tmp_path, monkeypatch):
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    tournament_dir = tmp_path / "tournament"
+    tournament_dir.mkdir()
+    monkeypatch.setattr(web_server, "LOGS_DIR", logs_dir)
+    monkeypatch.setattr(web_server, "TOURNAMENT_DIR", tournament_dir)
+
+    matched_log = logs_dir / "round1_match1.jsonl"
+    matched_log.write_text('{"tick": 1}\n')
+    standalone_log = logs_dir / "standalone.jsonl"
+    standalone_log.write_text('{"tick": 1}\n')
+    results_file = tournament_dir / "results.json"
+    results_file.write_text(json.dumps({
+        "rounds": [[
+            {
+                "a": "agent-alpha",
+                "b": "agent-beta",
+                "winner": "agent-alpha",
+                "log": str(matched_log),
+            },
+            {
+                "a": "agent-gamma",
+                "b": None,
+                "winner": "agent-gamma",
+                "log": None,
+            },
+        ]],
+    }))
+
+    response = client.get("/api/browse")
+
+    assert response.status_code == 200
+    logs = {entry["path"]: entry for entry in response.json()["logs"]}
+    assert logs[str(matched_log)]["a"] == "agent-alpha"
+    assert logs[str(matched_log)]["b"] == "agent-beta"
+    assert logs[str(matched_log)]["winner"] == "agent-alpha"
+    assert "a" not in logs[str(standalone_log)]
+    assert "b" not in logs[str(standalone_log)]
+    assert "winner" not in logs[str(standalone_log)]
+
+    results_file.write_text("not json")
+    response = client.get("/api/browse")
+
+    assert response.status_code == 200
+    logs = {entry["path"]: entry for entry in response.json()["logs"]}
+    assert "a" not in logs[str(matched_log)]
+    assert "b" not in logs[str(matched_log)]
+    assert "winner" not in logs[str(matched_log)]
+
+
 def test_browse_returns_empty_lists_when_directories_are_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(web_server, "LOGS_DIR", tmp_path / "nonexistent_logs")
     monkeypatch.setattr(web_server, "TOURNAMENT_DIR", tmp_path / "nonexistent_tournament")

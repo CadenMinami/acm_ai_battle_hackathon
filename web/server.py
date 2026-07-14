@@ -44,10 +44,44 @@ def _list_directory(directory: Path, pattern: str) -> List[Dict[str, Any]]:
     return entries
 
 
+def _match_lookup() -> Dict[str, Dict[str, Any]]:
+    lookup: Dict[str, Dict[str, Any]] = {}
+    for path in TOURNAMENT_DIR.glob("*.json"):
+        file_lookup: Dict[str, Dict[str, Any]] = {}
+        try:
+            data = json.loads(path.read_text())
+            rounds = data["rounds"]
+            if not isinstance(rounds, list):
+                raise TypeError
+            for round_matches in rounds:
+                if not isinstance(round_matches, list):
+                    raise TypeError
+                for match in round_matches:
+                    if not isinstance(match, dict):
+                        raise TypeError
+                    log_path = match.get("log")
+                    if log_path:
+                        file_lookup[log_path] = {
+                            "a": match["a"],
+                            "b": match["b"],
+                            "winner": match["winner"],
+                        }
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            continue
+        lookup.update(file_lookup)
+    return lookup
+
+
 @app.get("/api/browse")
 def browse() -> JSONResponse:
+    logs = _list_directory(LOGS_DIR, "*.jsonl")
+    matches = _match_lookup()
+    for entry in logs:
+        match = matches.get(entry["path"])
+        if match:
+            entry.update(match)
     return JSONResponse({
-        "logs": _list_directory(LOGS_DIR, "*.jsonl"),
+        "logs": logs,
         "results": _list_directory(TOURNAMENT_DIR, "*.json"),
     })
 
