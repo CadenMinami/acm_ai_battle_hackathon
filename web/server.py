@@ -66,7 +66,7 @@ def _match_lookup() -> Dict[str, Dict[str, Any]]:
                             "b": match["b"],
                             "winner": match["winner"],
                         }
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError):
             continue
         lookup.update(file_lookup)
     return lookup
