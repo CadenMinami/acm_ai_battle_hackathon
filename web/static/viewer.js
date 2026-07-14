@@ -1,12 +1,82 @@
 const params = new URLSearchParams(window.location.search);
 const logPath = params.get("log");
 const mode = params.get("mode") || "replay"; // "live" or "replay"
+let agentA = params.get("a");
+let agentB = params.get("b");
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
+const matchHeader = document.getElementById("match-header");
 const TILE = 20; // pixels per arena tile (18 wide x 32 tall -> 360x640)
 const ARENA_WIDTH = 360;
 const ARENA_HEIGHT = 640;
+
+function renderMatchupHeader() {
+  matchHeader.replaceChildren();
+  if (agentA && agentB) {
+    const blueName = document.createElement("span");
+    blueName.className = "text-team-blue font-bold";
+    blueName.textContent = agentA;
+
+    const vs = document.createElement("span");
+    vs.className = "text-ink-muted";
+    vs.textContent = "vs";
+
+    const redName = document.createElement("span");
+    redName.className = "text-team-red font-bold";
+    redName.textContent = agentB;
+
+    matchHeader.append(blueName, vs, redName);
+  } else {
+    const placeholder = document.createElement("span");
+    placeholder.className = "text-ink-muted";
+    placeholder.textContent = "Match viewer";
+    matchHeader.appendChild(placeholder);
+  }
+}
+
+function playerName(playerIndex) {
+  if (playerIndex === 0) return agentA || "Player 1";
+  if (playerIndex === 1) return agentB || "Player 2";
+  return null;
+}
+
+function renderSnapshotHeader(snapshot) {
+  if (!snapshot || !snapshot.game_over) {
+    renderMatchupHeader();
+    return;
+  }
+
+  matchHeader.replaceChildren();
+  const result = document.createElement("span");
+  result.className = "text-gold font-bold";
+  if (snapshot.winner === null) {
+    result.textContent = "Draw";
+  } else {
+    const winnerName = playerName(snapshot.winner);
+    result.textContent = winnerName ? `Winner: ${winnerName}` : "Match complete";
+  }
+  matchHeader.appendChild(result);
+}
+
+async function resolveAgentNames() {
+  if (agentA && agentB) return;
+  if (!logPath) return;
+
+  try {
+    const res = await fetch("/api/browse");
+    if (!res.ok) return;
+    const data = await res.json();
+    const logs = Array.isArray(data.logs) ? data.logs : [];
+    const entry = logs.find((log) => log.path === logPath);
+    if (entry && entry.a && entry.b) {
+      agentA = entry.a;
+      agentB = entry.b;
+    }
+  } catch (err) {
+    // Leave the neutral header in place when browse metadata is unavailable.
+  }
+}
 
 function drawMessage(lines) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -87,7 +157,11 @@ function drawHpBar(x, y, radius, hp, maxHp) {
 function draw(snapshot) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawArenaBackground();
-  if (!snapshot) return;
+  if (!snapshot) {
+    renderSnapshotHeader(null);
+    return;
+  }
+  renderSnapshotHeader(snapshot);
 
   updateElixirBars(snapshot.players);
 
@@ -137,22 +211,33 @@ function draw(snapshot) {
   });
 }
 
-if (!logPath) {
-  drawMessage([
-    "No match log specified.",
-    "Add ?log=<path>&mode=replay to the URL, e.g.:",
-    "?log=logs/example_match.jsonl&mode=replay",
-  ]);
-} else if (mode === "live") {
-  setInterval(async () => {
-    const res = await fetch(`/snapshot/latest?log=${encodeURIComponent(logPath)}`);
-    if (res.ok) {
-      draw(await res.json());
-    } else {
-      drawMessage([`Could not load log: ${logPath}`, `(status ${res.status})`]);
-    }
-  }, 250);
-} else {
+async function startViewer() {
+  renderMatchupHeader();
+
+  if (!logPath) {
+    drawMessage([
+      "No match log specified.",
+      "Add ?log=<path>&mode=replay to the URL, e.g.:",
+      "?log=logs/example_match.jsonl&mode=replay",
+    ]);
+    return;
+  }
+
+  await resolveAgentNames();
+  renderMatchupHeader();
+
+  if (mode === "live") {
+    setInterval(async () => {
+      const res = await fetch(`/snapshot/latest?log=${encodeURIComponent(logPath)}`);
+      if (res.ok) {
+        draw(await res.json());
+      } else {
+        drawMessage([`Could not load log: ${logPath}`, `(status ${res.status})`]);
+      }
+    }, 250);
+    return;
+  }
+
   fetch(`/replay?log=${encodeURIComponent(logPath)}`)
     .then((res) => {
       if (!res.ok) throw new Error(`status ${res.status}`);
@@ -209,3 +294,5 @@ if (!logPath) {
       drawMessage([`Could not load log: ${logPath}`, err.message]);
     });
 }
+
+startViewer();
