@@ -32,25 +32,67 @@ Note on `--seed`: it makes the battle engine itself deterministic, but `agents/b
 
 Use `tournament.bracket.run_bracket` with agent entries shaped as `{"name": str, "command": list[str]}`:
 
-```bash
-.venv/bin/python - <<'PY'
+Save this as `run_bracket_example.py` in the repo root:
+
+```python
 from pathlib import Path
 from tournament.bracket import run_bracket
 
-agents = [
-    {"name": f"agent{i}", "command": [".venv/bin/python", "agents/baseline_random/agent.py"]}
-    for i in range(4)
-]
+if __name__ == "__main__":
+    agents = [
+        {"name": f"agent{i}", "command": [".venv/bin/python", "agents/baseline_random/agent.py"]}
+        for i in range(4)
+    ]
 
-results = run_bracket(
+    results = run_bracket(
+        agents,
+        seed=123,
+        logs_dir=Path("logs"),
+        results_path=Path("tournament/results.json"),
+    )
+    print(results)
+```
+
+Then run it from the repo root:
+
+```bash
+.venv/bin/python run_bracket_example.py
+```
+
+Use a saved `.py` file, not a heredoc, `python -c`, or stdin-piped snippet: matches within a round run in separate worker processes, and Python's multiprocessing needs a real file on disk to hand those workers.
+
+## Running Multiple Simulations Concurrently
+
+Matchups within a single bracket round already run concurrently; there is no extra flag to turn on. By default, the number of concurrent worker processes is capped at the machine's CPU count (`os.cpu_count()`).
+
+Pass `max_workers` to `run_bracket()` if you want to override that cap:
+
+```python
+run_bracket(
     agents,
     seed=123,
     logs_dir=Path("logs"),
     results_path=Path("tournament/results.json"),
+    max_workers=4,
 )
-print(results)
-PY
 ```
+
+To see the concurrency in practice, run a bracket with enough agents that the first round takes a few real seconds. Eight or more baseline agents is usually enough; use the saved-file pattern from "Run A Bracket" and expand the `range(4)` to `range(8)` or higher.
+
+While that bracket is running, start the web viewer in another terminal from the repo root:
+
+```bash
+uvicorn web.server:app --reload
+```
+
+Open multiple browser tabs, each pointed at a different round-1 match log in live mode:
+
+```text
+http://localhost:8000/viewer?log=logs/round1_match1.jsonl&mode=live
+http://localhost:8000/viewer?log=logs/round1_match2.jsonl&mode=live
+```
+
+Seeing several matches animate at once, in separate tabs, at the same time, is the concurrency made visible. A full bracket run also finishes well below the wall-clock time of running every match one-by-one, especially at larger agent counts such as a 32-agent bracket.
 
 ## Launch The Web Viewer
 
