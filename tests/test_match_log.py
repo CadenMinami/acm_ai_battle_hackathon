@@ -9,7 +9,7 @@ from orchestrator.match_log import append_snapshot, build_snapshot
 
 from clasher.engine import BattleEngine
 from clasher.arena import Position
-from clasher.entities import Projectile
+from clasher.entities import Projectile, RollingProjectile, TimedExplosive
 
 
 def test_build_snapshot_includes_both_sides_in_full():
@@ -58,6 +58,52 @@ def test_build_snapshot_includes_projectiles_with_kind_and_target():
     assert entities_by_card["Musketeer"]["kind"] == "projectile"
     assert entities_by_card["Musketeer"]["target_x"] == 9.0
     assert entities_by_card["Musketeer"]["target_y"] == 20.0
+
+
+def test_build_snapshot_targetless_projectiles_have_kind_but_no_target():
+    engine = BattleEngine(data_file=str(GAMEDATA_PATH))
+    battle = engine.create_battle()
+
+    rolling = RollingProjectile(
+        id=battle.next_entity_id,
+        position=Position(9.0, 12.0),
+        player_id=0,
+        card_stats=None,
+        hitpoints=1,
+        max_hitpoints=1,
+        damage=100.0,
+        range=1.0,
+        sight_range=0,
+    )
+    rolling.spell_name = "Log"
+    battle.entities[rolling.id] = rolling
+    battle.next_entity_id += 1
+
+    explosive = TimedExplosive(
+        id=battle.next_entity_id,
+        position=Position(9.0, 14.0),
+        player_id=1,
+        card_stats=None,
+        hitpoints=1,
+        max_hitpoints=1,
+        damage=0,
+        range=0,
+        sight_range=0,
+    )
+    battle.entities[explosive.id] = explosive
+    battle.next_entity_id += 1
+
+    snapshot = build_snapshot(battle)
+
+    targetless_projectiles = [
+        e
+        for e in snapshot["entities"]
+        if e["kind"] == "projectile" and e["card"] in ("Log", "Unknown")
+    ]
+    assert len(targetless_projectiles) >= 2
+    for entity in targetless_projectiles:
+        assert "target_x" not in entity
+        assert "target_y" not in entity
 
 
 def test_append_snapshot_writes_one_json_line_per_call(tmp_path):
