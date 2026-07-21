@@ -300,6 +300,11 @@ async function startViewer() {
         scrub.value = index;
       }
 
+      function parseSpeed() {
+        const [intervalMs, ticksPerStep] = speed.value.split(",").map(Number);
+        return { intervalMs, ticksPerStep };
+      }
+
       function tick() {
         if (index >= snapshots.length - 1) {
           playing = false;
@@ -307,13 +312,17 @@ async function startViewer() {
           clearInterval(timer);
           return;
         }
-        index += 1;
+        const { ticksPerStep } = parseSpeed();
+        index = Math.min(index + ticksPerStep, snapshots.length - 1);
         render();
       }
 
       function restartTimer() {
         clearInterval(timer);
-        if (playing) timer = setInterval(tick, Number(speed.value));
+        if (playing) {
+          const { intervalMs } = parseSpeed();
+          timer = setInterval(tick, intervalMs);
+        }
       }
 
       playPause.addEventListener("click", () => {
