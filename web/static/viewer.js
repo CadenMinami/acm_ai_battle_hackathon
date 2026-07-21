@@ -154,6 +154,39 @@ function drawHpBar(x, y, radius, hp, maxHp) {
   ctx.fillRect(barX, barY, barWidth * ratio, barHeight);
 }
 
+const PROJECTILE_RADIUS = 3;
+const PROJECTILE_TRAIL_LENGTH = 14; // px
+
+function drawProjectile(entity, x, y, teamColor) {
+  if (entity.target_x !== undefined && entity.target_y !== undefined) {
+    const targetX = entity.target_x * TILE;
+    const targetY = (32 - entity.target_y) * TILE;
+    const dx = targetX - x;
+    const dy = targetY - y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+
+    const trailX = x - dirX * PROJECTILE_TRAIL_LENGTH;
+    const trailY = y - dirY * PROJECTILE_TRAIL_LENGTH;
+
+    const gradient = ctx.createLinearGradient(trailX, trailY, x, y);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+    gradient.addColorStop(1, teamColor);
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(trailX, trailY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = teamColor;
+  ctx.beginPath();
+  ctx.arc(x, y, PROJECTILE_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function draw(snapshot) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawArenaBackground();
@@ -169,6 +202,12 @@ function draw(snapshot) {
     const x = entity.x * TILE;
     const y = (32 - entity.y) * TILE; // flip so player 0 renders at the bottom
     const teamColor = entity.player_id === 0 ? "#4a90d9" : "#d94a4a";
+
+    if (entity.kind === "projectile") {
+      drawProjectile(entity, x, y, teamColor);
+      continue;
+    }
+
     const radius = entity.is_tower ? 12 : 8;
 
     ctx.save();
