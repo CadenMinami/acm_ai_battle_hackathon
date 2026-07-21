@@ -2,8 +2,9 @@
 
 > Write a bot, drop it into a Clash-style arena, and watch it fight another bot — then replay the battle in your browser.
 
-<!-- Screenshot slot: add a PNG/GIF of the match viewer here (e.g. docs/viewer.png).
-     The browser wasn't available to capture one when this README was written. -->
+<p align="center">
+  <img src="docs/viewer.png" alt="The match viewer replaying a battle: glowing team-colored units with health bars, projectiles mid-flight, and the arena river dividing the two sides." width="320">
+</p>
 
 Built for the ACM club so members can write competing AI agents and run them against each other. It has three parts you'll actually touch:
 
