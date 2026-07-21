@@ -1,10 +1,21 @@
 # AI Agent Battle Simulator
 
-This project is an ACM club AI-agent battle simulator. It wraps a vendored Clash-style Python battle engine with an orchestrator that runs two student agents as subprocesses, records per-tick JSONL replays, runs simple single-elimination brackets, and serves a lightweight FastAPI web viewer for match replays and bracket results.
+> Write a bot, drop it into a Clash-style arena, and watch it fight another bot — then replay the battle in your browser.
 
-## Setup
+<!-- Screenshot slot: add a PNG/GIF of the match viewer here (e.g. docs/viewer.png).
+     The browser wasn't available to capture one when this README was written. -->
 
-Create and activate a virtual environment, then install the project dependencies:
+Built for the ACM club so members can write competing AI agents and run them against each other. It has three parts you'll actually touch:
+
+- **The arena** — a Python battle engine simulates a Clash Royale–style 1v1 match, tick by tick.
+- **The orchestrator** — runs two agents as separate programs, feeds each one the game state, applies their moves, and records the match to a replay file.
+- **The viewer** — a small web app that plays back any match (or watches one live) and runs single-elimination tournaments.
+
+Your agent can be written in **any language** — it just reads JSON from standard input and writes JSON back out. See [Write an agent](#write-an-agent).
+
+## Quickstart
+
+**1. Install** (tested on Python 3.11):
 
 ```bash
 python3 -m venv .venv
@@ -12,9 +23,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run A Single Match
-
-Run two agents through the orchestrator CLI:
+**2. Run a match** between two copies of the reference agent:
 
 ```bash
 .venv/bin/python -m orchestrator.cli \
@@ -24,15 +33,74 @@ Run two agents through the orchestrator CLI:
   --log-path logs/example_match.jsonl
 ```
 
-The CLI prints a JSON match result. When `--log-path` is provided, the replay is written as one JSON snapshot per line.
+It prints the result and writes a replay (one JSON snapshot per tick):
 
-Note on `--seed`: it makes the battle engine itself deterministic, but `agents/baseline_random/agent.py` uses Python's own unseeded `random` module in its own subprocess — so re-running the same seed with a stochastic agent like the baseline will not necessarily reproduce the same match outcome.
+```json
+{ "winner": 0, "forfeited_by": null, "ticks": 4580, "completed": true, "seed": 123 }
+```
 
-## Run A Bracket
+**3. Watch it.** Start the viewer and open the replay:
 
-Use `tournament.bracket.run_bracket` with agent entries shaped as `{"name": str, "command": list[str]}`:
+```bash
+uvicorn web.server:app --reload
+```
 
-Save this as `run_bracket_example.py` in the repo root:
+Then open <http://localhost:8000/> and click the match, or go straight to
+`http://localhost:8000/viewer?log=logs/example_match.jsonl&mode=replay`.
+
+> **On `--seed`:** it makes the *engine* deterministic. The reference agent uses its own unseeded randomness in a separate process, so replaying the same seed with a random agent won't reproduce the exact same match.
+
+## Write an agent
+
+An agent is any program the orchestrator can launch that speaks JSON over stdin/stdout. On each turn (agents are polled every 5 ticks) it receives one line of game state and must reply with one line describing its move.
+
+**Startup:** your program is launched with the player id (`0` or `1`) as its final command-line argument.
+
+**Each turn, you receive** one JSON object like this (the opponent's hand and next card are hidden — fog of war):
+
+```json
+{
+  "request_id": 42,
+  "tick": 30,
+  "elixir": 2.4,
+  "hand": ["Musketeer", "Archer", "Giant", "Minions"],
+  "next_card": "BabyDragon",
+  "own_troops": [{ "card": "Knight", "x": 9.0, "y": 10.0, "hp": 1789 }],
+  "enemy_troops": [],
+  "towers": {
+    "own":   { "king": 4824, "left": 3631, "right": 3631 },
+    "enemy": { "king": 4824, "left": 3631, "right": 3631 }
+  }
+}
+```
+
+**You reply** with one of two actions. Echo back the `request_id` you were given:
+
+```json
+{ "request_id": 42, "action": "deploy", "card": "Musketeer", "x": 9.0, "y": 6.0 }
+```
+```json
+{ "request_id": 42, "action": "none" }
+```
+
+Deploy a card by its **name** (it must be in your `hand`), at an `(x, y)` tile on your side of the arena. Illegal moves — a card you can't afford, a bad position — are silently ignored by the engine, so you don't have to validate them yourself.
+
+**Rules of the road:**
+
+- You have **100 ms** to respond each turn. Miss 5 turns in a row and you forfeit. (There's a 2-second grace period at startup.)
+- Read the reference agent — [`agents/baseline_random/agent.py`](agents/baseline_random/agent.py) — for a complete, working example in under 60 lines.
+- Run yours the same way as the Quickstart, swapping in your command:
+
+```bash
+.venv/bin/python -m orchestrator.cli \
+  --agent-a ".venv/bin/python agents/my_agent/agent.py" \
+  --agent-b ".venv/bin/python agents/baseline_random/agent.py" \
+  --seed 1 --log-path logs/my_match.jsonl
+```
+
+## Run a tournament
+
+`run_bracket` plays a single-elimination bracket and writes the results. Save this as `run_bracket_example.py` in the repo root:
 
 ```python
 from pathlib import Path
@@ -43,7 +111,6 @@ if __name__ == "__main__":
         {"name": f"agent{i}", "command": [".venv/bin/python", "agents/baseline_random/agent.py"]}
         for i in range(4)
     ]
-
     results = run_bracket(
         agents,
         seed=123,
@@ -53,64 +120,67 @@ if __name__ == "__main__":
     print(results)
 ```
 
-Then run it from the repo root:
+Run it from the repo root:
 
 ```bash
 .venv/bin/python run_bracket_example.py
 ```
 
-Use a saved `.py` file, not a heredoc, `python -c`, or stdin-piped snippet: matches within a round run in separate worker processes, and Python's multiprocessing needs a real file on disk to hand those workers.
+> Use a saved `.py` file — not a heredoc, `python -c`, or piped snippet. Matches within a round run in separate worker processes, and Python's multiprocessing needs a real file on disk to hand to those workers.
 
-## Running Multiple Simulations Concurrently
+**Matches within a round run concurrently by default**, capped at your machine's CPU count. No flag to enable — pass `max_workers=N` to `run_bracket()` to lower the cap.
 
-Matchups within a single bracket round already run concurrently; there is no extra flag to turn on. By default, the number of concurrent worker processes is capped at the machine's CPU count (`os.cpu_count()`).
-
-Pass `max_workers` to `run_bracket()` if you want to override that cap:
-
-```python
-run_bracket(
-    agents,
-    seed=123,
-    logs_dir=Path("logs"),
-    results_path=Path("tournament/results.json"),
-    max_workers=4,
-)
-```
-
-To see the concurrency in practice, run a bracket with enough agents that the first round takes a few real seconds. Eight or more baseline agents is usually enough; use the saved-file pattern from "Run A Bracket" and expand the `range(4)` to `range(8)` or higher.
-
-While that bracket is running, start the web viewer in another terminal from the repo root:
-
-```bash
-uvicorn web.server:app --reload
-```
-
-Open multiple browser tabs, each pointed at a different round-1 match log in live mode:
+To *see* the concurrency: run a bracket with 8+ agents (expand `range(4)`), start the viewer, and open several round-1 logs in `mode=live` tabs at once:
 
 ```text
 http://localhost:8000/viewer?log=logs/round1_match1.jsonl&mode=live
 http://localhost:8000/viewer?log=logs/round1_match2.jsonl&mode=live
 ```
 
-Seeing several matches animate at once, in separate tabs, at the same time, is the concurrency made visible. A full bracket run also finishes well below the wall-clock time of running every match one-by-one, especially at larger agent counts such as a 32-agent bracket.
+## The match viewer
 
-## Launch The Web Viewer
+Start it with `uvicorn web.server:app --reload` and open <http://localhost:8000/>. The home page lists every replay in `logs/` and every bracket in `tournament/` as clickable cards.
 
-Start the FastAPI app:
+- **Replay mode** (`&mode=replay`) — scrub, play/pause, and step through a finished match. Playback runs from **1x up to 32x**, and the winner is shown the moment the replay loads, with a **Skip to End** button.
+- **Live mode** (`&mode=live`) — watch a match animate while it's still being written to its log.
+- Units render as team-colored circles with health bars; **projectiles** (arrows, fireballs, bombs) show as small streaks flying toward their targets.
 
-```bash
-uvicorn web.server:app --reload
+## How it works
+
+One match, from the orchestrator's point of view, each tick:
+
+```
+engine state ──▶ project (fog of war) ──▶ agent A ─┐
+             └─▶ project (fog of war) ──▶ agent B ─┤
+                                                   ▼
+                        apply moves ──▶ advance engine ──▶ append replay snapshot
 ```
 
-Open `http://localhost:8000/` — the home page lists every match log under `logs/` and any bracket results under `tournament/` as clickable cards; click one to open its replay or bracket view. To jump straight to a specific match, open `http://localhost:8000/viewer?log=logs/example_match.jsonl&mode=replay` directly (use `mode=live` while a match with `--log-path` is still running). Replay links load JSONL files from the allowed `logs/` directory, and bracket results load from `tournament/`.
+- The **engine** (`engine/`) is a vendored, pure-Python Clash-style simulator. It owns the full game state.
+- The **orchestrator** (`orchestrator/`) drives the loop: it projects a fog-of-war view for each agent (each side sees the board but not the opponent's hand), sends it over stdin, reads the reply, applies legal moves, and writes a replay snapshot.
+- The **replay** is JSONL — one self-contained JSON snapshot per line — which is what both the live and replay viewers read.
 
-## Docker Sandboxing Note
+## Project layout
 
-A Docker image definition exists at `docker/agent.Dockerfile` for future agent sandboxing work. Today, agent commands are opaque `list[str]` values passed to subprocesses, and the tournament runner does not enforce containerization. Treat student-submitted commands as trusted-LAN-only until the club decides and implements the sandbox policy.
+```
+engine/         Vendored pure-Python battle engine (the "clasher" package) + game data
+orchestrator/   Runs one match: agent subprocesses, fog-of-war projection, replay logging, CLI
+tournament/     Single-elimination bracket runner (concurrent matches)
+web/            FastAPI server + static HTML/CSS/JS match viewer
+agents/         Example agents (start with baseline_random/)
+tests/          Test suite for the orchestrator, tournament, and web layers
+docs/           HANDOFF.md and design docs
+```
 
-## Rebuilding The Theme
+## Development
 
-If you change any Tailwind utility classes in `web/static/*.html`, regenerate `web/static/theme.css`:
+Run the tests from the repo root:
+
+```bash
+.venv/bin/python -m pytest
+```
+
+The web UI is plain HTML/CSS/JS served directly by FastAPI — no build step, with one exception. If you change Tailwind utility classes in `web/static/*.html`, regenerate `web/static/theme.css`:
 
 ```bash
 curl -sLo /tmp/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64
@@ -118,4 +188,8 @@ chmod +x /tmp/tailwindcss
 /tmp/tailwindcss -i web/tailwind-input.css -o web/static/theme.css --minify
 ```
 
-Replace `tailwindcss-macos-arm64` with your platform's binary name (`tailwindcss-linux-x64`, `tailwindcss-windows-x64.exe`, etc. — see the [releases page](https://github.com/tailwindlabs/tailwindcss/releases/latest)) if you're not on Apple Silicon. This is the only build step in the project — everything else is plain HTML/CSS/JS served directly by FastAPI.
+Swap `tailwindcss-macos-arm64` for your platform's binary (`tailwindcss-linux-x64`, `tailwindcss-windows-x64.exe`, …) from the [releases page](https://github.com/tailwindlabs/tailwindcss/releases/latest).
+
+## Security note
+
+Agents run as **unsandboxed subprocesses** — the orchestrator executes whatever command you give it, with no isolation or resource limits. A Docker sandbox is sketched at `docker/agent.Dockerfile` but isn't wired in yet. Until it is, only run agents you trust, on a trusted network. See [`docs/HANDOFF.md`](docs/HANDOFF.md) for the current state and open work.
