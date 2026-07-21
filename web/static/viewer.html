@@ -11,6 +11,7 @@
   </div>
   <div class="max-w-md mx-auto py-4 flex items-center justify-center gap-3">
     <button id="playPause" class="border border-arena-line px-3 py-1 rounded hover:border-gold hover:text-gold transition-colors">Play</button>
+    <button id="skipToEnd" class="border border-arena-line px-3 py-1 rounded hover:border-gold hover:text-gold transition-colors">Skip to End</button>
     <input id="scrub" type="range" min="0" max="0" value="0" class="flex-1 accent-gold">
     <select id="speed" class="bg-arena border border-arena-line rounded px-2 py-1">
       <option value="200,1">1x</option>
@@ -22,6 +23,7 @@
     </select>
   </div>
   <div id="match-header" class="max-w-md mx-auto mb-2 flex items-center justify-center gap-3 text-sm text-ink-muted"></div>
+  <div id="result-badge" class="max-w-md mx-auto mb-2 flex items-center justify-center gap-2 text-sm"></div>
   <div class="flex items-center justify-center gap-3">
     <div id="elixir-0" class="flex flex-col-reverse gap-[2px]"></div>
     <canvas id="board" width="360" height="640" class="border-2 border-arena-line rounded"></canvas>

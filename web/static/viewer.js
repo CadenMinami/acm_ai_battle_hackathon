@@ -59,6 +59,19 @@ function renderSnapshotHeader(snapshot) {
   matchHeader.appendChild(result);
 }
 
+function renderResultBadge(finalSnapshot) {
+  const badge = document.getElementById("result-badge");
+  if (!finalSnapshot || !finalSnapshot.game_over) return;
+  const text =
+    finalSnapshot.winner === null
+      ? "Final result: Draw"
+      : `Final result: ${playerName(finalSnapshot.winner) || `Player ${finalSnapshot.winner + 1}`} wins`;
+  const el = document.createElement("span");
+  el.className = "text-gold font-bold";
+  el.textContent = text;
+  badge.replaceChildren(el);
+}
+
 async function resolveAgentNames() {
   if (agentA && agentB) return;
   if (!logPath) return;
@@ -289,7 +302,9 @@ async function startViewer() {
       const scrub = document.getElementById("scrub");
       const playPause = document.getElementById("playPause");
       const speed = document.getElementById("speed");
+      const skipToEnd = document.getElementById("skipToEnd");
       scrub.max = snapshots.length - 1;
+      renderResultBadge(snapshots[snapshots.length - 1]);
 
       let index = 0;
       let playing = false;
@@ -333,6 +348,13 @@ async function startViewer() {
       speed.addEventListener("change", restartTimer);
       scrub.addEventListener("input", () => {
         index = Number(scrub.value);
+        render();
+      });
+      skipToEnd.addEventListener("click", () => {
+        playing = false;
+        playPause.textContent = "Play";
+        clearInterval(timer);
+        index = snapshots.length - 1;
         render();
       });
 
