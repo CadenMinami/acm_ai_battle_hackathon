@@ -9,6 +9,7 @@ from orchestrator.match_log import append_snapshot, build_snapshot
 
 from clasher.engine import BattleEngine
 from clasher.arena import Position
+from clasher.entities import Projectile
 
 
 def test_build_snapshot_includes_both_sides_in_full():
@@ -24,6 +25,39 @@ def test_build_snapshot_includes_both_sides_in_full():
     assert "Giant" in cards
     assert len(snapshot["players"]) == 2
     assert all(e["max_hp"] > 0 for e in snapshot["entities"])
+
+
+def test_build_snapshot_includes_projectiles_with_kind_and_target():
+    engine = BattleEngine(data_file=str(GAMEDATA_PATH))
+    battle = engine.create_battle()
+    battle.deploy_card(0, "Knight", Position(9.0, 10.0))
+
+    projectile = Projectile(
+        id=battle.next_entity_id,
+        position=Position(9.0, 16.0),
+        player_id=0,
+        card_stats=None,
+        hitpoints=1,
+        max_hitpoints=1,
+        damage=50.0,
+        range=0,
+        sight_range=0,
+        target_position=Position(9.0, 20.0),
+        travel_speed=6.0,
+        source_name="Musketeer",
+    )
+    battle.entities[projectile.id] = projectile
+    battle.next_entity_id += 1
+
+    snapshot = build_snapshot(battle)
+    entities_by_card = {e["card"]: e for e in snapshot["entities"]}
+
+    assert entities_by_card["Knight"]["kind"] == "unit"
+    assert "target_x" not in entities_by_card["Knight"]
+
+    assert entities_by_card["Musketeer"]["kind"] == "projectile"
+    assert entities_by_card["Musketeer"]["target_x"] == 9.0
+    assert entities_by_card["Musketeer"]["target_y"] == 20.0
 
 
 def test_append_snapshot_writes_one_json_line_per_call(tmp_path):

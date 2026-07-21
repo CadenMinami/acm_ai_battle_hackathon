@@ -4,17 +4,18 @@ from typing import Any, Dict
 
 from clasher.battle import BattleState
 
-from orchestrator.entity_view import TOWER_CARD_NAMES, iter_live_entities
+from orchestrator.entity_view import TOWER_CARD_NAMES, is_projectile, iter_live_entities
 
 
 def build_snapshot(battle: BattleState) -> Dict[str, Any]:
     """Build one spectator-facing snapshot of the battle. Unlike
     project_state, this has no fog-of-war restriction: it's written to a
     log for a human to watch after the fact, not sent to a competing
-    agent, so both sides are shown in full."""
+    agent, so both sides are shown in full — including in-flight
+    projectiles, which agents never see (see entity_view.iter_live_entities)."""
     entities = []
-    for entity, card_name in iter_live_entities(battle):
-        entities.append({
+    for entity, card_name in iter_live_entities(battle, include_projectiles=True):
+        entry = {
             "card": card_name,
             "x": entity.position.x,
             "y": entity.position.y,
@@ -22,7 +23,13 @@ def build_snapshot(battle: BattleState) -> Dict[str, Any]:
             "max_hp": entity.max_hitpoints,
             "player_id": entity.player_id,
             "is_tower": card_name in TOWER_CARD_NAMES,
-        })
+            "kind": "projectile" if is_projectile(entity) else "unit",
+        }
+        target_position = getattr(entity, "target_position", None)
+        if target_position is not None:
+            entry["target_x"] = target_position.x
+            entry["target_y"] = target_position.y
+        entities.append(entry)
 
     return {
         "tick": battle.tick,
